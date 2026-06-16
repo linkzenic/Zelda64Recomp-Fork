@@ -7,12 +7,26 @@
 #include <numeric>
 #include <stdexcept>
 #include <cinttypes>
+#include <cstdlib>
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <signal.h>
+#include <unistd.h>
+#define ZELDA_ANDROID_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaNative", __VA_ARGS__)
+#else
+#define ZELDA_ANDROID_LOG(...)
+#endif
+
+#if !defined(__ANDROID__)
 #include "nfd.h"
+#endif
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
+#if !defined(__ANDROID__)
 #define SDL_MAIN_HANDLED
+#endif
 #ifdef _WIN32
 #include "SDL.h"
 #else
@@ -35,6 +49,7 @@
 #include "zelda_support.h"
 #include "zelda_game.h"
 #include "recomp_data.h"
+#include "../ui/ui_mod_installer.h"
 #include "ovl_patches.hpp"
 #include "librecomp/game.hpp"
 #include "librecomp/mods.hpp"
@@ -46,6 +61,7 @@
 #include "../../patches/misc_funcs.h"
 
 #include "mods/mm_recomp_dpad_builtin.h"
+#include "mods/mm_recomp_save_editor.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -57,6 +73,63 @@
 #include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
 const std::string version_string = "1.2.2";
+
+#if defined(__ANDROID__)
+static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pending_mod_paths) {
+    std::list<std::filesystem::path> paths;
+    if (pending_mod_paths == nullptr || pending_mod_paths[0] == '\0') {
+        return paths;
+    }
+
+    std::string pending_paths_string{pending_mod_paths};
+    size_t start = 0;
+    while (start <= pending_paths_string.size()) {
+        size_t end = pending_paths_string.find('\n', start);
+        std::string path_string = pending_paths_string.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (!path_string.empty()) {
+            paths.emplace_back(path_string);
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return paths;
+}
+
+static void install_pending_android_mods() {
+    const char* pending_mod_paths = std::getenv("APP_PENDING_MOD_PATHS");
+    std::list<std::filesystem::path> paths = parse_pending_mod_paths(pending_mod_paths);
+    if (paths.empty()) {
+        return;
+    }
+
+    ZELDA_ANDROID_LOG("pending mod import count=%zu", paths.size());
+
+    recompui::ModInstaller::Result result;
+    recompui::ModInstaller::start_mod_installation(paths, nullptr, result);
+
+    if (!result.error_messages.empty()) {
+        for (const std::string& error_message : result.error_messages) {
+            ZELDA_ANDROID_LOG("pending mod import error: %s", error_message.c_str());
+        }
+        std::vector<std::string> cancel_errors;
+        recompui::ModInstaller::cancel_mod_installation(result, cancel_errors);
+    }
+    else {
+        std::vector<std::string> finish_errors;
+        recompui::ModInstaller::finish_mod_installation(result, finish_errors);
+        for (const std::string& error_message : finish_errors) {
+            ZELDA_ANDROID_LOG("pending mod finish error: %s", error_message.c_str());
+        }
+        ZELDA_ANDROID_LOG("pending mod import installed=%zu finish_errors=%zu",
+            result.pending_installations.size(),
+            finish_errors.size());
+    }
+
+    SDL_setenv("APP_PENDING_MOD_PATHS", "", true);
+}
+#endif
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -136,6 +209,7 @@ bool SetImageAsIcon(const char* filename, SDL_Window* window)
 SDL_Window* window;
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
+    ZELDA_ANDROID_LOG("create_window begin");
     uint32_t flags = SDL_WINDOW_RESIZABLE;
 
 #if defined(__APPLE__)
@@ -145,7 +219,8 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 #endif
 
     window = SDL_CreateWindow("Zelda 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
-#if defined(__linux__)
+    ZELDA_ANDROID_LOG("SDL_CreateWindow returned %p", window);
+#if defined(__linux__) && !defined(__ANDROID__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
         SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -158,15 +233,17 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
         exit_error("Failed to create window: %s\n", SDL_GetError());
     }
 
+#if defined(_WIN32)
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
     SDL_GetWindowWMInfo(window, &wmInfo);
-
-#if defined(_WIN32)
     return ultramodern::renderer::WindowHandle{ wmInfo.info.win.window, GetCurrentThreadId() };
 #elif defined(__linux__) || defined(__ANDROID__)
     return ultramodern::renderer::WindowHandle{ window };
 #elif defined(__APPLE__)
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    SDL_GetWindowWMInfo(window, &wmInfo);
     SDL_MetalView view = SDL_Metal_CreateView(window);
     return ultramodern::renderer::WindowHandle{ wmInfo.info.cocoa.window,  SDL_Metal_GetLayer(view) };
 #else
@@ -175,6 +252,10 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 }
 
 void update_gfx(void*) {
+    static uint32_t update_count = 0;
+    if ((update_count++ % 600) == 0) {
+        ZELDA_ANDROID_LOG("update_gfx count=%u", update_count);
+    }
     recomp::handle_events();
 }
 
@@ -571,6 +652,7 @@ void reorder_texture_pack(recomp::mods::ModContext&) {
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+    ZELDA_ANDROID_LOG("main entered");
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {
         ultramodern::error_handling::message_box(("Invalid version string: " + version_string).c_str());
@@ -611,7 +693,9 @@ int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
 
     // Initialize native file dialogs.
+#if !defined(__ANDROID__)
     NFD_Init();
+#endif
 
     // Change to a font that supports Japanese characters
     CONSOLE_FONT_INFOEX cfi;
@@ -638,9 +722,15 @@ int main(int argc, char** argv) {
     std::filesystem::current_path("/var/data", ec);
 #endif
 
+#if !defined(__ANDROID__)
     // Initialize SDL audio and set the output frequency.
+    ZELDA_ANDROID_LOG("initializing SDL audio");
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     reset_audio(48000);
+    ZELDA_ANDROID_LOG("SDL audio initialized");
+#else
+    ZELDA_ANDROID_LOG("skipping SDL audio on Android");
+#endif
 
     // Source controller mappings file
     std::u8string controller_db_path = (zelda64::get_program_path() / "recompcontrollerdb.txt").u8string();
@@ -649,13 +739,24 @@ int main(int argc, char** argv) {
     }
 
     recomp::register_config_path(zelda64::get_app_folder_path());
+    ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
 
     // Register supported games and patches
     for (const auto& game : supported_games) {
         recomp::register_game(game);
     }
 
+#if defined(__ANDROID__)
+    if (const char* pending_rom_path = std::getenv("APP_PENDING_ROM_PATH");
+        pending_rom_path != nullptr && pending_rom_path[0] != '\0' && !supported_games.empty()) {
+        recomp::RomValidationError rom_error = recomp::select_rom(pending_rom_path, supported_games[0].game_id);
+        ZELDA_ANDROID_LOG("pending ROM import path=%s result=%d", pending_rom_path, static_cast<int>(rom_error));
+        SDL_setenv("APP_PENDING_ROM_PATH", "", true);
+    }
+#endif
+
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
+    recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
 
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
@@ -672,11 +773,13 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     recompui::register_ui_exports();
     recomputil::register_data_api_exports();
+    ZELDA_ANDROID_LOG("registered exports");
 
     zelda64::register_overlays();
     zelda64::register_patches();
     recomputil::init_extended_actor_data();
     zelda64::load_config();
+    ZELDA_ANDROID_LOG("loaded config");
 
     recomp::rsp::callbacks_t rsp_callbacks{
         .get_rsp_microcode = get_rsp_microcode,
@@ -692,11 +795,15 @@ int main(int argc, char** argv) {
         .update_gfx = update_gfx,
     };
 
+#if !defined(__ANDROID__)
     ultramodern::audio_callbacks_t audio_callbacks{
         .queue_samples = queue_samples,
         .get_frames_remaining = get_frames_remaining,
         .set_frequency = set_frequency,
     };
+#else
+    ultramodern::audio_callbacks_t audio_callbacks{};
+#endif
 
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recomp::poll_inputs,
@@ -731,6 +838,11 @@ int main(int argc, char** argv) {
     // Register the .rtz texture pack file format with the previous content type as its only allowed content type.
     recomp::mods::register_mod_container_type("rtz", std::vector{ texture_pack_content_type_id }, false);
 
+#if defined(__ANDROID__)
+    install_pending_android_mods();
+#endif
+
+    ZELDA_ANDROID_LOG("calling recomp::start");
     recomp::start(
         project_version,
         {},
@@ -743,8 +855,21 @@ int main(int argc, char** argv) {
         error_handling_callbacks,
         threads_callbacks
     );
+    ZELDA_ANDROID_LOG("recomp::start returned");
 
+#if defined(__ANDROID__)
+    // SDLActivity can invoke SDL_main again in the same Android process after
+    // an activity relaunch. The recomp runtime keeps global patch symbol state,
+    // so end the process when the native runtime exits and let Android start a
+    // clean one next time.
+    std::fflush(nullptr);
+    kill(getpid(), SIGKILL);
+    _exit(EXIT_SUCCESS);
+#endif
+
+#if !defined(__ANDROID__)
     NFD_Quit();
+#endif
 
     if (preloaded) {
         release_preload(preload_context);

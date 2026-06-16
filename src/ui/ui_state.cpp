@@ -5,6 +5,15 @@
 #include <SDL2/SDL_video.h>
 #endif
 #include <chrono>
+#include <sstream>
+#include <filesystem>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define ZELDA_UI_LOG(...) __android_log_print(ANDROID_LOG_WARN, "ZeldaUI", __VA_ARGS__)
+#else
+#define ZELDA_UI_LOG(...)
+#endif
 
 #include "rt64_render_hooks.h"
 
@@ -181,12 +190,14 @@ public:
     UIState& operator=(UIState&& rhs) = delete;
 
     UIState(SDL_Window* window, RT64::RenderInterface* interface, RT64::RenderDevice* device) {
+        ZELDA_UI_LOG("UIState ctor begin window=%p interface=%p device=%p", window, interface, device);
         launcher_menu_controller = recompui::create_launcher_menu();
         config_menu_controller = recompui::create_config_menu();
 
         system_interface = std::make_unique<SystemInterface_SDL>();
         system_interface->SetWindow(window);
         render_interface.init(interface, device);
+        ZELDA_UI_LOG("render interface initialized");
 
         launcher_menu_controller->register_events(event_listener_instancer);
         config_menu_controller->register_events(event_listener_instancer);
@@ -198,6 +209,7 @@ public:
         recompui::register_custom_elements();
 
         Rml::Initialise();
+        ZELDA_UI_LOG("Rml initialized");
         
         // Apply the hack to replace RmlUi's default color parser with one that conforms to HTML5 alpha parsing for SASS compatibility
         recompui::apply_color_hack();
@@ -206,6 +218,7 @@ public:
         SDL_GetWindowSizeInPixels(window, &width, &height);
         
         context = Rml::CreateContext("main", Rml::Vector2i(width, height));
+        ZELDA_UI_LOG("Rml context created size=%dx%d context=%p", width, height, context);
         launcher_menu_controller->make_bindings(context);
         config_menu_controller->make_bindings(context);
 
@@ -228,16 +241,23 @@ public:
 
             for (const FontFace& face : font_faces) {
                 auto font = zelda64::get_asset_path(face.filename);
-                Rml::LoadFontFace(font.string(), face.fallback_face);
+                bool loaded = Rml::LoadFontFace(font.string(), face.fallback_face);
+                ZELDA_UI_LOG("font %s loaded=%d", font.string().c_str(), loaded ? 1 : 0);
             }
         }
+        ZELDA_UI_LOG("UIState ctor end");
     }
 
     void create_menus() {
-        recompui::init_styling(zelda64::get_asset_path("recomp.rcss"));
+        auto stylesheet = zelda64::get_asset_path("recomp.rcss");
+        ZELDA_UI_LOG("create_menus stylesheet=%s exists=%d", stylesheet.string().c_str(), std::filesystem::exists(stylesheet) ? 1 : 0);
+        recompui::init_styling(stylesheet);
         launcher_menu_controller->load_document();
+        ZELDA_UI_LOG("launcher document loaded");
         config_menu_controller->load_document();
+        ZELDA_UI_LOG("config document loaded");
         recompui::init_prompt_context();
+        ZELDA_UI_LOG("prompt context initialized");
     }
 
     void unload() {
@@ -340,6 +360,7 @@ public:
     }
 
     void show_context(recompui::ContextId context) {
+        ZELDA_UI_LOG("show_context document=%p shown_before=%zu", context.get_document(), shown_contexts.size());
         if (std::find_if(shown_contexts.begin(), shown_contexts.end(), [context](auto& c){ return c.context == context; }) != shown_contexts.end()) {
             recompui::message_box("Attemped to show the same context twice");
             assert(false);
@@ -447,11 +468,13 @@ inline const std::string read_file_to_string(std::filesystem::path path) {
 }
 
 void init_hook(RT64::RenderInterface* interface, RT64::RenderDevice* device) {
+    ZELDA_UI_LOG("init_hook begin interface=%p device=%p window=%p", interface, device, window);
 #if defined(__linux__)
     std::locale::global(std::locale::classic());
 #endif
     ui_state = std::make_unique<UIState>(window, interface, device);
     ui_state->create_menus();
+    ZELDA_UI_LOG("init_hook end");
 }
 
 moodycamel::ConcurrentQueue<SDL_Event> ui_event_queue{};
@@ -549,6 +572,11 @@ void recompui::activate_mouse() {
 }
 
 void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* swap_chain_framebuffer) {
+    static int draw_count = 0;
+    if (draw_count < 10 || draw_count % 120 == 0) {
+        ZELDA_UI_LOG("draw_hook #%d ui_state=%p framebuffer=%p", draw_count, ui_state.get(), swap_chain_framebuffer);
+    }
+    draw_count++;
 
     apply_background_input_mode();
 
@@ -559,6 +587,7 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
 
     // Return to the launcher if no menu is open and the game isn't started.
     if (!recompui::is_any_context_shown() && !ultramodern::is_game_started()) {
+        ZELDA_UI_LOG("showing launcher from draw_hook");
         recompui::show_context(recompui::get_launcher_context_id(), "");
     }
 
@@ -757,6 +786,9 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
 
         int width = swap_chain_framebuffer->getWidth();
         int height = swap_chain_framebuffer->getHeight();
+        if (draw_count < 10 || draw_count % 120 == 0) {
+            ZELDA_UI_LOG("rendering UI contexts=%d size=%dx%d", recompui::is_any_context_shown() ? 1 : 0, width, height);
+        }
 
         // Scale the UI based on the window size with 1080 vertical resolution as the reference point.
         ui_state->context->SetDensityIndependentPixelRatio((height) / 1080.0f);

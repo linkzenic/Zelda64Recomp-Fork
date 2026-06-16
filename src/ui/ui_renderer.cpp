@@ -104,7 +104,11 @@ class RmlRenderInterface_RT64_impl : public Rml::RenderInterfaceCompatibility {
     static constexpr uint32_t initial_index_buffer_size = 1024 * sizeof(int);
     static constexpr RT64::RenderFormat RmlTextureFormat = RT64::RenderFormat::R8G8B8A8_UNORM;
     static constexpr RT64::RenderFormat RmlTextureFormatBgra = RT64::RenderFormat::B8G8R8A8_UNORM;
+#if defined(__ANDROID__)
+    static constexpr RT64::RenderFormat SwapChainFormat = RT64::RenderFormat::R8G8B8A8_UNORM;
+#else
     static constexpr RT64::RenderFormat SwapChainFormat = RT64::RenderFormat::B8G8R8A8_UNORM;
+#endif
     static constexpr uint32_t RmlTextureFormatBytesPerPixel = RenderFormatSize(RmlTextureFormat);
     static_assert(RenderFormatSize(RmlTextureFormatBgra) == RmlTextureFormatBytesPerPixel);
     RT64::RenderInterface* interface_;
@@ -155,7 +159,6 @@ public:
     RmlRenderInterface_RT64_impl(RT64::RenderInterface* interface, RT64::RenderDevice* device) {
         interface_ = interface;
         device_ = device;
-
         // Enable 4X MSAA if supported by the device.
         const RT64::RenderSampleCounts desired_sample_count = RT64::RenderSampleCount::COUNT_8;
         if (device_->getSampleCountsSupported(SwapChainFormat) & desired_sample_count) {

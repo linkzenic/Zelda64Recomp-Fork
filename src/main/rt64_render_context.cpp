@@ -2,6 +2,14 @@
 #include <cstring>
 #include <variant>
 #include <algorithm>
+#include <cstdlib>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define ZELDA_ANDROID_RT64_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaRT64", __VA_ARGS__)
+#else
+#define ZELDA_ANDROID_RT64_LOG(...)
+#endif
 
 #define HLSL_CPU
 #include "hle/rt64_application.h"
@@ -203,6 +211,7 @@ ultramodern::renderer::GraphicsApi map_graphics_api(RT64::UserConfiguration::Gra
 }
 
 zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool debug) {
+    ZELDA_ANDROID_RT64_LOG("RT64Context begin rdram=%p debug=%d", rdram, debug ? 1 : 0);
     static unsigned char dummy_rom_header[0x40];
     recompui::set_render_hooks();
 
@@ -255,9 +264,18 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
     // Set up the RT64 application configuration fields.
     RT64::ApplicationConfiguration appConfig;
     appConfig.useConfigurationFile = false;
+#if defined(__ANDROID__)
+    if (const char* app_folder_path = std::getenv("APP_FOLDER_PATH")) {
+        appConfig.detectDataPath = false;
+        appConfig.dataPath = std::filesystem::path{app_folder_path} / "rt64";
+        ZELDA_ANDROID_RT64_LOG("RT64 dataPath=%s", appConfig.dataPath.string().c_str());
+    }
+#endif
 
     // Create the RT64 application.
+    ZELDA_ANDROID_RT64_LOG("creating RT64 application");
     app = std::make_unique<RT64::Application>(appCore, appConfig);
+    ZELDA_ANDROID_RT64_LOG("created RT64 application");
 
     // Set initial user config settings based on the current settings.
     auto& cur_config = ultramodern::renderer::get_graphics_config();
@@ -288,15 +306,19 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
 #ifdef _WIN32
     thread_id = window_handle.thread_id;
 #endif
+    ZELDA_ANDROID_RT64_LOG("calling app->setup");
     setup_result = map_setup_result(app->setup(thread_id));
+    ZELDA_ANDROID_RT64_LOG("app->setup result=%d chosen_api=%d", static_cast<int>(setup_result), static_cast<int>(app->chosenGraphicsAPI));
     // Get the API that RT64 chose.
     chosen_api = map_graphics_api(app->chosenGraphicsAPI);
     if (setup_result != ultramodern::renderer::SetupResult::Success) {
+        ZELDA_ANDROID_RT64_LOG("RT64 setup failed");
         app = nullptr;
         return;
     }
 
     // Set the application's fullscreen state.
+    ZELDA_ANDROID_RT64_LOG("setting fullscreen");
     app->setFullScreen(cur_config.wm_option == ultramodern::renderer::WindowMode::Fullscreen);
 
     // Check if the selected device actually supports MSAA sample positions and MSAA for for the formats that will be used
@@ -314,6 +336,7 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
     }
 
     high_precision_fb_enabled = app->shaderLibrary->usesHDR;
+    ZELDA_ANDROID_RT64_LOG("RT64Context ready sample_positions=%d high_precision=%d", sample_positions_supported ? 1 : 0, high_precision_fb_enabled ? 1 : 0);
 }
 
 zelda64::renderer::RT64Context::~RT64Context() = default;

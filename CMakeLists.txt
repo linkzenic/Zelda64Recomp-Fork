@@ -45,6 +45,38 @@ set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(HLSL_CPU)
 
+set(ZELDA_HOST_FILE_TO_C "file_to_c" CACHE FILEPATH "Host file_to_c executable used by CMake custom commands.")
+
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+    option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
+    option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." ON)
+else()
+    option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+    option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
+    option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." OFF)
+endif()
+
+if (ZELDA_ANDROID_SHELL_ONLY)
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android")
+        message(FATAL_ERROR "ZELDA_ANDROID_SHELL_ONLY is only supported for Android builds.")
+    endif()
+
+    if (NOT ZELDA_ANDROID_SDL_LIFECYCLE_PROBE)
+        message(FATAL_ERROR "ZELDA_ANDROID_SHELL_ONLY requires -DZELDA_ANDROID_SDL_LIFECYCLE_PROBE=ON.")
+    endif()
+
+    find_package(SDL2 REQUIRED)
+
+    add_library(main SHARED
+        ${CMAKE_SOURCE_DIR}/src/android/sdl_lifecycle_probe.cpp
+    )
+    target_include_directories(main PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(main PRIVATE SDL2::SDL2 android log)
+
+    return()
+endif()
+
 if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
@@ -128,7 +160,7 @@ add_custom_target(PatchesBin
 
 # Generate patches_bin.c from patches.bin
 add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
-    COMMAND file_to_c ${CMAKE_SOURCE_DIR}/patches/patches.bin mm_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
+    COMMAND ${ZELDA_HOST_FILE_TO_C} ${CMAKE_SOURCE_DIR}/patches/patches.bin mm_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
     DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.bin
 )
 
@@ -144,8 +176,15 @@ add_custom_command(OUTPUT
                    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf
 )
 
-# Main executable
-add_executable(Zelda64Recompiled)
+# Main executable / Android SDLActivity shared library.
+if (CMAKE_SYSTEM_NAME MATCHES "Android" AND ZELDA_ANDROID_RUNTIME_APK)
+    add_library(main SHARED)
+    set(ZELDA_RECOMP_TARGET main)
+    target_compile_definitions(main PRIVATE ZELDA_ANDROID_RUNTIME_APK=1)
+else()
+    add_executable(Zelda64Recompiled)
+    set(ZELDA_RECOMP_TARGET Zelda64Recompiled)
+endif()
 
 set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/main/main.cpp
@@ -207,7 +246,11 @@ if (APPLE)
     list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/main/support_apple.mm)
 endif()
 
-target_include_directories(Zelda64Recompiled PRIVATE
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/android/android_lifecycle.cpp)
+endif()
+
+target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
     ${CMAKE_SOURCE_DIR}/lib/concurrentqueue
@@ -228,13 +271,13 @@ target_include_directories(Zelda64Recompiled PRIVATE
 )
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    target_compile_options(Zelda64Recompiled PRIVATE
+    target_compile_options(${ZELDA_RECOMP_TARGET} PRIVATE
         -march=nehalem
         -fno-strict-aliasing
         -fms-extensions
     )
 else()
-    target_compile_options(Zelda64Recompiled PRIVATE
+    target_compile_options(${ZELDA_RECOMP_TARGET} PRIVATE
         -fno-strict-aliasing
         -fms-extensions
     )
@@ -242,11 +285,11 @@ endif()
 
 if (MSVC)
     # Disable identical code folding, since this breaks mod function patching as multiple functions can get merged into one.
-    target_link_options(Zelda64Recompiled PRIVATE /OPT:NOICF)
+    target_link_options(${ZELDA_RECOMP_TARGET} PRIVATE /OPT:NOICF)
 elseif (APPLE)
     # Use a wrapper around ld64 that respects segprot's `max_prot` value in order
     # to make our executable memory writable (required for mod function patching)
-    target_link_options(Zelda64Recompiled PRIVATE
+    target_link_options(${ZELDA_RECOMP_TARGET} PRIVATE
         "-fuse-ld=${CMAKE_SOURCE_DIR}/.github/macos/ld64"
     )
 endif()
@@ -266,10 +309,10 @@ if (WIN32)
         URL https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-VC.zip
     )
     FetchContent_MakeAvailable(sdl2)
-    target_include_directories(Zelda64Recompiled PRIVATE
+    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE
         ${sdl2_SOURCE_DIR}/include
     )
-    target_link_directories(Zelda64Recompiled PRIVATE
+    target_link_directories(${ZELDA_RECOMP_TARGET} PRIVATE
         ${sdl2_SOURCE_DIR}/lib/x64
     )
 
@@ -290,19 +333,19 @@ if (WIN32)
             LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
     )
 
-    target_sources(Zelda64Recompiled PRIVATE ${CMAKE_SOURCE_DIR}/icons/app.rc)
-    target_link_libraries(Zelda64Recompiled PRIVATE SDL2 Winmm.lib)
+    target_sources(${ZELDA_RECOMP_TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/icons/app.rc)
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2 Winmm.lib)
 endif()
 
 if (APPLE)
     find_package(SDL2 REQUIRED)
-    target_include_directories(Zelda64Recompiled PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
 
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
     set(THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package(Threads REQUIRED)
 
-    target_link_libraries(Zelda64Recompiled PRIVATE ${CMAKE_DL_LIBS} Threads::Threads SDL2::SDL2)
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE ${CMAKE_DL_LIBS} Threads::Threads SDL2::SDL2)
 
     include(${CMAKE_SOURCE_DIR}/.github/macos/apple_bundle.cmake)
 endif()
@@ -313,15 +356,15 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
 
     # Generate icon_bytes.c from the app icon PNG.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
-        COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
+        COMMAND ${ZELDA_HOST_FILE_TO_C} ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
         DEPENDS ${CMAKE_SOURCE_DIR}/icons/512.png
     )
-    target_sources(Zelda64Recompiled PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
+    target_sources(${ZELDA_RECOMP_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
 
     message(STATUS "SDL2_FOUND = ${SDL2_FOUND}")
     message(STATUS "SDL2_INCLUDE_DIRS = ${SDL2_INCLUDE_DIRS}")
 
-    target_include_directories(Zelda64Recompiled PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
 
     find_package(Freetype REQUIRED)
 
@@ -330,16 +373,23 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     message(STATUS "FREETYPE_LIBRARIES = ${FREETYPE_LIBRARIES}")
 
     include_directories(${FREETYPE_LIBRARIES})
-    target_link_libraries(Zelda64Recompiled PRIVATE ${FREETYPE_LIBRARIES} SDL2::SDL2)
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE ${FREETYPE_LIBRARIES} SDL2::SDL2)
 
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
     set(THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package(Threads REQUIRED)
 
-    target_link_libraries(Zelda64Recompiled PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-target_link_libraries(Zelda64Recompiled PRIVATE
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    find_package(SDL2 REQUIRED)
+    add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
+    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 android log vulkan)
+endif()
+
+target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE
     PatchesLib
     RecompiledFuncs
     librecomp
@@ -366,25 +416,25 @@ if (${WIN32})
     set (DXC "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc.exe")
     add_compile_definitions(NOMINMAX)
 else()
-    if (APPLE)
+    if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
         # Apple's binary is universal, so it'll work on both x86_64 and arm64
-        set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-macos")
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-            set(SPIRVCROSS "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/spirv-cross/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64//src/contrib/spirv-cross/bin/x64/spirv-cross")
+        set (DXC ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-macos")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+            set(SPIRVCROSS ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/spirv-cross/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64//src/contrib/spirv-cross/bin/x64/spirv-cross")
         else()
-            set(SPIRVCROSS "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/spirv-cross/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64//src/contrib/spirv-cross/bin/x64/spirv-cross")
+            set(SPIRVCROSS ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/spirv-cross/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64//src/contrib/spirv-cross/bin/x64/spirv-cross")
         endif()
     else()
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-            set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+            set (DXC ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
         else()
-            set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
+            set (DXC ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
         endif()
     endif()
 endif()
 
-build_vertex_shader(Zelda64Recompiled "shaders/InterfaceVS.hlsl" "shaders/InterfaceVS.hlsl")
-build_pixel_shader(Zelda64Recompiled "shaders/InterfacePS.hlsl" "shaders/InterfacePS.hlsl")
+build_vertex_shader(${ZELDA_RECOMP_TARGET} "shaders/InterfaceVS.hlsl" "shaders/InterfaceVS.hlsl")
+build_pixel_shader(${ZELDA_RECOMP_TARGET} "shaders/InterfacePS.hlsl" "shaders/InterfacePS.hlsl")
 
 # Embed all .nrm files in the "mods" directory
 file(GLOB NRM_FILES "${CMAKE_SOURCE_DIR}/mods/*.nrm")
@@ -398,15 +448,15 @@ foreach(NRM_FILE ${NRM_FILES})
 
     add_custom_command(
         OUTPUT ${OUT_C} ${OUT_H}
-        COMMAND file_to_c ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
+        COMMAND ${ZELDA_HOST_FILE_TO_C} ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
         DEPENDS ${NRM_FILE}
     )
 
     list(APPEND GENERATED_NRM_SOURCES ${OUT_C})
 endforeach()
 
-target_sources(Zelda64Recompiled PRIVATE ${GENERATED_NRM_SOURCES})
+target_sources(${ZELDA_RECOMP_TARGET} PRIVATE ${GENERATED_NRM_SOURCES})
 
-target_sources(Zelda64Recompiled PRIVATE ${SOURCES})
+target_sources(${ZELDA_RECOMP_TARGET} PRIVATE ${SOURCES})
 
-set_property(TARGET Zelda64Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_property(TARGET ${ZELDA_RECOMP_TARGET} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

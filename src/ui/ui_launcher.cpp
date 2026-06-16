@@ -5,6 +5,7 @@
 #include "ultramodern/ultramodern.hpp"
 #include "RmlUi/Core.h"
 #include "nfd.h"
+#include <cstdlib>
 #include <filesystem>
 
 static std::string version_string;
@@ -116,6 +117,13 @@ public:
         constructor.Bind("mm_rom_valid", &mm_rom_valid);
 
         version_string = recomp::get_project_version().to_string();
+#if defined(__ANDROID__)
+        if (const char* android_version_name = std::getenv("APP_ANDROID_VERSION_NAME");
+            android_version_name != nullptr && android_version_name[0] != '\0') {
+            version_string += " Android ";
+            version_string += android_version_name;
+        }
+#endif
         constructor.Bind("version_number", &version_string);
 
         model_handle = constructor.GetModelHandle();

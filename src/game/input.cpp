@@ -253,7 +253,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             float z = event->csensor.data[2] * rad_to_deg;
             ControllerState& state = InputState.controller_states[event->csensor.which];
             uint64_t cur_timestamp = event->csensor.timestamp;
-            uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
+            uint32_t delta_ms = state.prev_gyro_timestamp != 0 ? cur_timestamp - state.prev_gyro_timestamp : 0;
             state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
             state.prev_gyro_timestamp = cur_timestamp;
 

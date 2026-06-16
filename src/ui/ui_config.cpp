@@ -22,6 +22,11 @@ Rml::DataModelHandle sound_options_model_handle;
 // True if controller config menu is open, false if keyboard config menu is open, undefined otherwise
 bool configuring_controller = false;
 
+#if defined(__ANDROID__)
+extern "C" bool zelda64_android_are_touch_controls_disabled();
+extern "C" void zelda64_android_set_touch_controls_disabled(bool disabled);
+#endif
+
 int recompui::config_tab_to_index(recompui::ConfigTab tab) {
     switch (tab) {
     case recompui::ConfigTab::General:
@@ -711,6 +716,20 @@ public:
 
         constructor.BindFunc("input_count", [](Rml::Variant& out) { out = static_cast<uint64_t>(recomp::get_num_inputs()); } );
         constructor.BindFunc("input_device_is_keyboard", [](Rml::Variant& out) { out = cur_device == recomp::InputDevice::Keyboard; } );
+        constructor.BindFunc("android_has_touch_controls", [](Rml::Variant& out) {
+#if defined(__ANDROID__)
+            out = true;
+#else
+            out = false;
+#endif
+        });
+        constructor.BindFunc("android_touch_controls_disabled", [](Rml::Variant& out) {
+#if defined(__ANDROID__)
+            out = zelda64_android_are_touch_controls_disabled();
+#else
+            out = false;
+#endif
+        });
 
         constructor.RegisterTransformFunc("get_input_name", [](const Rml::VariantList& inputs) {
             return Rml::Variant{recomp::get_input_name(static_cast<recomp::GameInput>(inputs.at(0).Get<size_t>()))};
@@ -740,6 +759,15 @@ public:
                 nav_help_model_handle.DirtyVariable("nav_help__accept");
                 nav_help_model_handle.DirtyVariable("nav_help__exit");
                 graphics_model_handle.DirtyVariable("gfx_help__apply");
+            });
+
+        constructor.BindEventCallback("toggle_android_touch_controls",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+#if defined(__ANDROID__)
+                bool disabled = zelda64_android_are_touch_controls_disabled();
+                zelda64_android_set_touch_controls_disabled(!disabled);
+                model_handle.DirtyVariable("android_touch_controls_disabled");
+#endif
             });
 
         constructor.BindEventCallback("clear_input_bindings",

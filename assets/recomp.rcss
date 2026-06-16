@@ -785,6 +785,15 @@ scrollbarhorizontal sliderbar {
   margin-left: 8dp;
 }
 
+.config__header-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.config__header-actions > :not(:first-child) {
+  margin-left: 12dp;
+}
+
 .config__row {
   display: flex;
   flex-direction: row;
