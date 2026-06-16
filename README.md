@@ -29,10 +29,7 @@ This port has been tested primarily on Snapdragon/Adreno handhelds. If graphics 
 - A Controls menu option to disable touch controls completely
 - Android accelerometer/gyro input for gyro aim
 - Physical controller support through SDL
-- Android-native mod `.so` loading support
 - Android Vulkan fixes needed by RT64
-- Android HUD placement fix for expanded 16:9 HUD
-- Android app icon and launcher metadata
 
 ## Storage Layout
 
@@ -61,15 +58,13 @@ This fork includes a small set of Android-ready mods by default:
 
 - Linkzenic Save Editor
 - ProxyMM KV
-- yazmt Majora's Mask Player Model Manager fsmodels plugin
+- yazmt Player Model Manager fsmodels plugin
 
-ProxyMM KV and the player model manager are bundled as complete mod packages, not only as `.so` files. They need Android-native shared libraries, and users would otherwise be likely to download desktop packages whose native binaries are incompatible with Android. Bundling the full Android-ready packages keeps the initial mod experience predictable and prevents Linux `.so` files from replacing the Android builds.
-
-The 2Ship Save Importer and audio API example mods are not bundled in this beta.
+ProxyMM KV and the player model manager are bundled as complete mod packages, not only as `.so` files. They need Android-native shared libraries, and users would otherwise be likely to download desktop packages whose native binaries are incompatible with Android. Bundling the full Android-ready packages prevents Linux `.so` files from replacing the Android builds.
 
 ## ROMs And Assets
 
-This project is not an emulator and does not include copyrighted game assets. You need a legally obtained supported Majora's Mask ROM. The app will ask you to select it before starting the game.
+This project is not an emulator and does not include copyrighted game assets. You need a legally obtained supported ROM. The app will ask you to select it before starting the game.
 
 ## Known Beta Notes
 
@@ -78,32 +73,12 @@ This project is not an emulator and does not include copyrighted game assets. Yo
 - External mod compatibility depends on whether the mod is pure `.nrm` content or includes native code that must be rebuilt for Android.
 - If a native mod causes crashes, remove it from `/sdcard/Zelda64/mods` and try launching again.
 
-## Building Android
-
-Install Android SDK/NDK and the dependency prefixes, then build from the repository root:
-
-```sh
-ANDROID_HOME="$HOME/Library/Android/sdk" tools/ci/setup_android_deps.sh
-tools/ci/prepare_android_generated_sources.sh
-gradle --no-daemon -p android :app:assembleDebug -PzeldaProbe=false
-```
-
-Useful inputs:
-
-- `ANDROID_HOME`, defaulting to `$HOME/Library/Android/sdk`
-- `ANDROID_NDK_HOME`, defaulting to `$ANDROID_HOME/ndk/26.0.10792818`
-- `ZELDA_ANDROID_SDL2_PREFIX`, defaulting to `$HOME/Android/prefixes/SDL2-2.32.10-android-arm64`
-- `ZELDA_ANDROID_FREETYPE_PREFIX`, required for full runtime builds
-
-Do not commit ROMs, decompressed ROMs, generated private game sources, APKs, AABs, Gradle output, CMake output, saves, configs, or user-installed mods.
-
-## Upstream Project
 
 This fork is based on Zelda64 Recompiled:
 
 https://github.com/Zelda64Recomp/Zelda64Recomp
 
-Zelda64 Recompiled uses [N64: Recompiled](https://github.com/Mr-Wiseguy/N64Recomp) to statically recompile Majora's Mask into a native port, with [RT64](https://github.com/rt64/rt64) as the rendering engine.
+Zelda64 Recompiled uses [N64: Recompiled](https://github.com/Mr-Wiseguy/N64Recomp), with [RT64](https://github.com/rt64/rt64) as the rendering engine.
 
 For general Zelda64 Recompiled information, modding documentation, and desktop releases, see the upstream repository.
 
@@ -112,5 +87,6 @@ For general Zelda64 Recompiled information, modding documentation, and desktop r
 - Zelda64 Recompiled contributors
 - N64: Recompiled contributors
 - RT64 contributors
-- BanjoRecomp Android port work, which helped prove the Android path
 - The Zelda64 Recompiled mod authors whose Android-ready packages are bundled in this fork
+- yazmt
+- ProxyRecomp_KV
