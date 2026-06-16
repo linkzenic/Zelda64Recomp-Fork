@@ -1,4 +1,4 @@
-# Zelda64 Recompiled Android
+# [linkzenic](https://github.com/linkzenic) / [Zelda64Recomp](https://github.com/linkzenic/Zelda64Recomp) Android
 
 This fork packages [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp) for Android. It is an early beta Android port of Majora's Mask Recompiled with RT64 rendering, SDL input, public device storage, touch controls, Android motion controls, and Android-native mod support.
 
