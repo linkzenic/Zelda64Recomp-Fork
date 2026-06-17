@@ -51,6 +51,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final int ANDROID_SENSOR_GYRO = 1;
     private static final int TOUCH_CONTROLLER_ATTACH_RETRY_LIMIT = 20;
     private static final long TOUCH_CONTROLLER_ATTACH_RETRY_DELAY_MS = 250;
+    private static final float RIGHT_STICK_DRAG_RADIUS_DP = 96.0f;
     private static final int REQUEST_OPEN_FILE = 0x5A64;
     private static final int REQUEST_STORAGE_PERMISSION = 0x5A65;
     private static final int REQUEST_OPEN_MOD_FILES = 0x5A66;
@@ -101,6 +102,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private Button buttonToggle;
     private FrameLayout leftJoystick;
     private ImageView leftJoystickKnob;
+    private View rightScreenArea;
     private boolean touchControllerAttached;
     private SensorManager sensorManager;
     private Sensor accelerometerSensor;
@@ -108,6 +110,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private boolean motionSensorsRegistered;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int touchControllerAttachRetries;
+    private int rightStickPointerId = MotionEvent.INVALID_POINTER_ID;
+    private float rightStickStartX;
+    private float rightStickStartY;
     private final Runnable touchControllerAttachRetry = this::retryTouchControllerAttach;
 
     @Override
@@ -366,6 +371,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         buttonToggle = overlayView.findViewById(R.id.buttonToggle);
         leftJoystick = overlayView.findViewById(R.id.left_joystick);
         leftJoystickKnob = overlayView.findViewById(R.id.left_joystick_knob);
+        rightScreenArea = overlayView.findViewById(R.id.right_screen_area);
 
         addButtonTouchListener(overlayView.findViewById(R.id.buttonA), ControllerButtons.BUTTON_A);
         addButtonTouchListener(overlayView.findViewById(R.id.buttonB), ControllerButtons.BUTTON_X);
@@ -383,6 +389,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         addAxisButtonTouchListener(overlayView.findViewById(R.id.buttonDpadRight), ControllerButtons.AXIS_RX, Short.MAX_VALUE);
 
         setupJoystick();
+        setupRightStickArea();
         setupToggleButton();
         applyTouchControlsVisibility();
     }
@@ -496,6 +503,66 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         });
     }
 
+    private void setupRightStickArea() {
+        final float maxRadius = RIGHT_STICK_DRAG_RADIUS_DP * getResources().getDisplayMetrics().density;
+
+        rightScreenArea.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    if (event.getX(0) < view.getWidth() * 0.5f) {
+                        return false;
+                    }
+                    ensureTouchControllerAttached();
+                    rightStickPointerId = event.getPointerId(0);
+                    rightStickStartX = event.getX(0);
+                    rightStickStartY = event.getY(0);
+                    setAxis(ControllerButtons.AXIS_RX, (short) 0);
+                    setAxis(ControllerButtons.AXIS_RY, (short) 0);
+                    return true;
+                case MotionEvent.ACTION_POINTER_DOWN:
+                    if (rightStickPointerId == MotionEvent.INVALID_POINTER_ID) {
+                        int pointerIndex = event.getActionIndex();
+                        ensureTouchControllerAttached();
+                        rightStickPointerId = event.getPointerId(pointerIndex);
+                        rightStickStartX = event.getX(pointerIndex);
+                        rightStickStartY = event.getY(pointerIndex);
+                    }
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    int pointerIndex = event.findPointerIndex(rightStickPointerId);
+                    if (pointerIndex < 0) {
+                        return true;
+                    }
+
+                    float deltaX = event.getX(pointerIndex) - rightStickStartX;
+                    float deltaY = event.getY(pointerIndex) - rightStickStartY;
+                    float distance = (float) Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    if (distance > maxRadius && distance > 0.0f) {
+                        float scale = maxRadius / distance;
+                        deltaX *= scale;
+                        deltaY *= scale;
+                    }
+
+                    setAxis(ControllerButtons.AXIS_RX, (short) (deltaX / maxRadius * Short.MAX_VALUE));
+                    setAxis(ControllerButtons.AXIS_RY, (short) (deltaY / maxRadius * Short.MAX_VALUE));
+                    return true;
+                }
+                case MotionEvent.ACTION_POINTER_UP:
+                    if (event.getPointerId(event.getActionIndex()) != rightStickPointerId) {
+                        return true;
+                    }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    rightStickPointerId = MotionEvent.INVALID_POINTER_ID;
+                    setAxis(ControllerButtons.AXIS_RX, (short) 0);
+                    setAxis(ControllerButtons.AXIS_RY, (short) 0);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
     public static void openFileDialog() {
         ZeldaSDLActivity activity = currentActivity;
         if (activity == null) {
@@ -573,7 +640,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     }
 
     private void lockLandscape() {
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     private void applyImmersiveFullscreen() {

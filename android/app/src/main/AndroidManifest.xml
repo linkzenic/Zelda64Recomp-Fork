@@ -22,7 +22,7 @@
             android:hardwareAccelerated="true"
             android:label="Zelda64 Recompiled"
             android:launchMode="singleTask"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/ZeldaTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
