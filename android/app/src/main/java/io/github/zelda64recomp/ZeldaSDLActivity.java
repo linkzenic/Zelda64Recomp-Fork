@@ -64,10 +64,13 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "saves"
     };
     private static final String BUNDLED_MODS_ASSET_DIR = "bundled_mods";
-    private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded";
+    private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v2";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
+            "yazmt_mm_corelib.nrm",
+            "yazmt_mm_global_objects.nrm",
+            "yazmt_mm_playermodelmanager.nrm",
             "yazmt_mm_playermodelmanager_fsmodels.nrm",
             "yazmt_mm_playermodelmanager_fsmodels_extlib.so"
     };
@@ -608,7 +611,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "Failed to read package version", e);
         }
-        return "0.1.2";
+        return "0.1.3";
     }
 
     private void updateAppAudioActive() {
