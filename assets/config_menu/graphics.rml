@@ -5,7 +5,63 @@
         <form class="config__form">
             <div class="config__hz-wrapper">
                 <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(0)">
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(0)">
+                        <label class="config-option__title">Resolution</label>
+                        <div class="config-option__list">
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="Original"
+                                id="res_240"
+                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                            />
+                            <label class="config-option__tab-label" for="res_240">240p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="Original2x"
+                                id="res_480"
+                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                            />
+                            <label class="config-option__tab-label" for="res_480">480p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="720p"
+                                id="res_720"
+                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                            />
+                            <label class="config-option__tab-label" for="res_720">720p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="1080p"
+                                id="res_1080"
+                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                            />
+                            <label class="config-option__tab-label" for="res_1080">1080p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="Auto"
+                                id="res_auto_android"
+                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                            />
+                            <label class="config-option__tab-label" for="res_auto_android">Auto</label>
+                        </div>
+                    </div>
+
+                    <div data-if="!is_android" class="config-option" data-event-mouseover="set_cur_config_index(0)">
                         <label class="config-option__title">Resolution</label>
                         <div class="config-option__list">
                             <input type="radio"
@@ -44,7 +100,7 @@
                         </div>
                     </div>
 
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(1)">
+                    <div data-if="!is_android" class="config-option" data-event-mouseover="set_cur_config_index(1)">
                         <label class="config-option__title">Downsampling Quality</label>
                         <div class="config-option__list">
                             <input type="radio"
@@ -95,7 +151,7 @@
                                 value="Original"
                                 id="ar_original"
                                 style="nav-up: #ds_windowed; nav-down: #wm_windowed"
-                                data-attr-style="res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed'"
+                                data-attr-style="is_android ? 'nav-up:#res_240; nav-down: #wm_windowed' : (res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed')"
                             />
                             <label class="config-option__tab-label" for="ar_original">Original</label>
                             <input type="radio"
@@ -106,7 +162,7 @@
                                 value="Expand"
                                 id="ar_expand"
                                 style="nav-up: #ds_2x; nav-down: #wm_fullscreen"
-                                data-attr-style="res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen'"
+                                data-attr-style="is_android ? 'nav-up:#res_1080; nav-down: #wm_fullscreen' : (res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen')"
                             />
                             <label class="config-option__tab-label" for="ar_expand">Expand</label>
                         </div>
@@ -269,10 +325,13 @@
 
                 </div>
                 <div class="config__wrapper">
-                    <p data-if="cur_config_index == 0">
+                    <p data-if="cur_config_index == 0 && is_android">
+                        Sets the internal render resolution. <b>240p</b> and <b>480p</b> are fastest, <b>720p</b> is balanced, <b>1080p</b> is sharper, and <b>Auto</b> uses the screen size without overshooting it.
+                    </p>
+                    <p data-if="cur_config_index == 0 && !is_android">
                         Sets the output resolution of the game. <b>Original</b> matches the game's original 240p resolution. <b>Original 2x</b> will render at 480p. <b>Auto</b> will scale based on the game window's resolution.
                     </p>
-                    <p data-if="cur_config_index == 1">
+                    <p data-if="cur_config_index == 1 && !is_android">
                         Renders at a higher resolution and scales it down to the output resolution for increased quality. Only available in <b>Original</b> and <b>Original 2x</b> resolution.
                         <br />
                         <br />

@@ -23,11 +23,21 @@ constexpr std::u8string_view graphics_filename = u8"graphics.json";
 constexpr std::u8string_view controls_filename = u8"controls.json";
 constexpr std::u8string_view sound_filename = u8"sound.json";
 
-constexpr auto res_default            = ultramodern::renderer::Resolution::Auto;
+constexpr auto res_default            =
+#if defined(__ANDROID__)
+    ultramodern::renderer::Resolution::P720;
+#else
+    ultramodern::renderer::Resolution::Auto;
+#endif
 constexpr auto hr_default             = ultramodern::renderer::HUDRatioMode::Clamp16x9;
 constexpr auto api_default            = ultramodern::renderer::GraphicsApi::Auto;
 constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Expand;
-constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::MSAA2X;
+constexpr auto msaa_default           =
+#if defined(__ANDROID__)
+    ultramodern::renderer::Antialiasing::None;
+#else
+    ultramodern::renderer::Antialiasing::MSAA2X;
+#endif
 constexpr auto rr_default             = ultramodern::renderer::RefreshRate::Display;
 constexpr auto hpfb_default           = ultramodern::renderer::HighPrecisionFramebuffer::Auto;
 constexpr int ds_default              = 1;

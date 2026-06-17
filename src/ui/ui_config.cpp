@@ -614,6 +614,13 @@ public:
         new_options = ultramodern::renderer::get_graphics_config();
         bind_config_list_events(constructor);
 
+#if defined(__ANDROID__)
+        static bool is_android = true;
+#else
+        static bool is_android = false;
+#endif
+        constructor.Bind("is_android", &is_android);
+
         constructor.BindFunc("res_option",
             [](Rml::Variant& out) { get_option(new_options.res_option, out); },
             [](const Rml::Variant& in) {

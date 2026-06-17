@@ -14,6 +14,11 @@ final boolean zeldaProbe = (project.findProperty('zeldaProbe') ?: 'true').toStri
 final boolean zeldaRuntimeApk = !zeldaProbe
 final boolean zeldaNativeOptimized = (project.findProperty('zeldaNativeOptimized') ?: (zeldaRuntimeApk ? 'true' : 'false')).toString().toBoolean()
 final String zeldaApplicationId = (project.findProperty('zeldaApplicationId') ?: 'io.github.zelda64recomp').toString()
+final String androidKeystorePath = (project.findProperty('ANDROID_KEYSTORE_PATH') ?: System.getenv('ANDROID_KEYSTORE_PATH') ?: '').toString()
+final String androidKeystorePassword = (project.findProperty('ANDROID_KEYSTORE_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: '').toString()
+final String androidKeyAlias = (project.findProperty('ANDROID_KEY_ALIAS') ?: System.getenv('ANDROID_KEY_ALIAS') ?: '').toString()
+final String androidKeyPassword = (project.findProperty('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEY_PASSWORD') ?: '').toString()
+final boolean hasAndroidReleaseSigning = androidKeystorePath && androidKeystorePassword && androidKeyAlias && androidKeyPassword
 final File generatedJniLibsDir = layout.buildDirectory.dir('generated/jniLibs').get().asFile
 final File generatedProgramAssetsDir = layout.buildDirectory.dir('generated/programAssets').get().asFile
 
@@ -25,8 +30,8 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 35
-        versionCode 6
-        versionName zeldaProbe ? '0.1.5-android-sdl-probe' : '0.1.5'
+        versionCode 7
+        versionName zeldaProbe ? '0.1.6-android-sdl-probe' : '0.1.6'
 
         externalNativeBuild {
             cmake {
@@ -56,6 +61,27 @@ android {
     }
 
     ndkVersion '26.0.10792818'
+
+    signingConfigs {
+        if (hasAndroidReleaseSigning) {
+            release {
+                storeFile file(androidKeystorePath)
+                storePassword androidKeystorePassword
+                keyAlias androidKeyAlias
+                keyPassword androidKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            debuggable false
+            jniDebuggable false
+            if (hasAndroidReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
 
     externalNativeBuild {
         cmake {

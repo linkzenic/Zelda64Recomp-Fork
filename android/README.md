@@ -9,10 +9,39 @@ From the repository root:
 ```sh
 ANDROID_HOME="$HOME/Library/Android/sdk" tools/ci/setup_android_deps.sh
 tools/ci/prepare_android_generated_sources.sh
-gradle --no-daemon -p android :app:assembleDebug -PzeldaProbe=false
+gradle --no-daemon -p android :app:assembleRelease -PzeldaProbe=false
 ```
 
-The default probe target can still be built for quick SDL lifecycle checks:
+Use release APKs for gameplay, FPS, and frame pacing testing. Debug APKs are useful for quick developer checks, but they are not a good baseline for gaming performance.
+
+Release signing is read from environment variables or Gradle properties:
+
+```sh
+ANDROID_KEYSTORE_PATH=/path/to/release-keystore.jks \
+ANDROID_KEYSTORE_PASSWORD=... \
+ANDROID_KEY_ALIAS=android-release \
+ANDROID_KEY_PASSWORD=... \
+gradle --no-daemon -p android :app:assembleRelease -PzeldaProbe=false
+```
+
+## GitHub Actions
+
+The `Build Android APK` workflow can be run manually from the Actions tab. It builds a signed release APK by default and uploads it as an artifact when the generated runtime sources are already available to the runner.
+
+GitHub cannot generate those sources by itself without the user's own decompressed ROM input. If the workflow reports missing `RecompiledFuncs`, `rsp`, or `RecompiledPatches` files, generate them locally first with:
+
+```sh
+tools/ci/prepare_android_generated_sources.sh
+```
+
+The workflow needs these repository secrets to sign release APKs:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The default probe target and debug runtime APK can still be built for quick SDL lifecycle checks:
 
 ```sh
 gradle --no-daemon -p android :app:assembleDebug

@@ -25,6 +25,7 @@ import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Display;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
@@ -142,6 +143,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         Log.i(TAG, "SDLActivity.onCreate returned");
         lockLandscape();
         applyImmersiveFullscreen();
+        requestHighRefreshRate();
         setupControllerOverlay();
         attachTouchController();
 
@@ -175,6 +177,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         super.onResume();
         lockLandscape();
         applyImmersiveFullscreen();
+        requestHighRefreshRate();
         activityResumed = true;
         updateAppAudioActive();
         notifyIfPublicStorageNowAvailable();
@@ -207,6 +210,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         windowFocused = hasFocus;
         if (hasFocus) {
             applyImmersiveFullscreen();
+            requestHighRefreshRate();
         }
         updateAppAudioActive();
         super.onWindowFocusChanged(hasFocus);
@@ -602,6 +606,44 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
+    private void requestHighRefreshRate() {
+        Window window = getWindow();
+        if (window == null) {
+            return;
+        }
+
+        Display display = getWindowManager().getDefaultDisplay();
+        if (display == null) {
+            return;
+        }
+
+        float bestRefreshRate = 0.0f;
+        int bestModeId = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            for (Display.Mode mode : display.getSupportedModes()) {
+                if (mode.getRefreshRate() > bestRefreshRate) {
+                    bestRefreshRate = mode.getRefreshRate();
+                    bestModeId = mode.getModeId();
+                }
+            }
+        } else {
+            bestRefreshRate = display.getRefreshRate();
+        }
+
+        if (bestRefreshRate <= 0.0f) {
+            return;
+        }
+
+        android.view.WindowManager.LayoutParams params = window.getAttributes();
+        params.preferredRefreshRate = bestRefreshRate;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && bestModeId != 0) {
+            params.preferredDisplayModeId = bestModeId;
+        }
+        window.setAttributes(params);
+
+        Log.i(TAG, "Requested display refresh rate " + bestRefreshRate + " Hz modeId=" + bestModeId);
+    }
+
     private String getAndroidVersionName() {
         try {
             PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
@@ -611,7 +653,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "Failed to read package version", e);
         }
-        return "0.1.5";
+        return "0.1.6";
     }
 
     private void updateAppAudioActive() {

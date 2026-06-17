@@ -150,6 +150,16 @@ void set_application_user_config(RT64::Application* application, const ultramode
             application->userConfig.resolutionMultiplier = 2.0 * std::max(config.ds_option, 1);
             application->userConfig.downsampleMultiplier = std::max(config.ds_option, 1);
             break;
+        case ultramodern::renderer::Resolution::P720:
+            application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+            application->userConfig.resolutionMultiplier = 3.0;
+            application->userConfig.downsampleMultiplier = 1;
+            break;
+        case ultramodern::renderer::Resolution::P1080:
+            application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+            application->userConfig.resolutionMultiplier = 4.5;
+            application->userConfig.downsampleMultiplier = 1;
+            break;
     }
 
     switch (config.hr_option) {
@@ -393,7 +403,11 @@ float zelda64::renderer::RT64Context::get_resolution_scale() const {
     switch (app->userConfig.resolution) {
         case RT64::UserConfiguration::Resolution::WindowIntegerScale:
             if (app->sharedQueueResources->swapChainHeight > 0) {
+#if defined(__ANDROID__)
+                return std::max(float(app->sharedQueueResources->swapChainHeight / ReferenceHeight), 1.0f);
+#else
                 return std::max(float((app->sharedQueueResources->swapChainHeight + ReferenceHeight - 1) / ReferenceHeight), 1.0f);
+#endif
             }
             else {
                 return 1.0f;
