@@ -166,6 +166,12 @@ jobs:
       - name: Prepare generated source helpers
         run: tools/ci/prepare_android_generated_sources.sh
 
+      - name: Build host file_to_c helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -O2 lib/rt64/src/tools/file_to_c/file_to_c.cpp -o "$ZELDA_ANDROID_FILE_TO_C"
+
       - name: Prepare release signing
         if: inputs.build_type == 'release'
         shell: bash
