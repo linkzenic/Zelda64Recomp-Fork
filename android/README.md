@@ -41,6 +41,19 @@ The workflow needs these repository secrets to sign release APKs:
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
+For GitHub-hosted release builds, the workflow also needs access to a private generated-source ZIP because ROM-derived generated sources are not committed to this public repo. Set:
+
+- `ZELDA_ANDROID_GENERATED_SOURCES_URL`
+- `ZELDA_ANDROID_GENERATED_SOURCES_TOKEN`, only if the URL needs a bearer token
+
+The ZIP should extract these directories at the repository root:
+
+```text
+RecompiledFuncs/
+RecompiledPatches/
+rsp/
+```
+
 The default probe target and debug runtime APK can still be built for quick SDL lifecycle checks:
 
 ```sh
