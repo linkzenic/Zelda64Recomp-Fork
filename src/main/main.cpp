@@ -8,9 +8,14 @@
 #include <stdexcept>
 #include <cinttypes>
 #include <cstdlib>
+#include <cstdarg>
+#include <cstring>
+#include <exception>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
+#include <fcntl.h>
+#include <jni.h>
 #include <signal.h>
 #include <unistd.h>
 #define ZELDA_ANDROID_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaNative", __VA_ARGS__)
@@ -75,6 +80,132 @@
 const std::string version_string = "1.2.2";
 
 #if defined(__ANDROID__)
+namespace {
+    char android_log_path[512] = "/sdcard/Zelda64/Zelda64Recompiled.log";
+    char android_crash_path[512] = "/sdcard/Zelda64/Zelda64Recompiled_crash.txt";
+    bool android_crash_handlers_installed = false;
+
+    void copy_android_path(char* destination, size_t destination_size, const char* source) {
+        if (source == nullptr || source[0] == '\0' || destination_size == 0) {
+            return;
+        }
+
+        std::strncpy(destination, source, destination_size - 1);
+        destination[destination_size - 1] = '\0';
+    }
+
+    void append_android_log(const char* format, ...) {
+        FILE* file = std::fopen(android_log_path, "a");
+        if (file == nullptr) {
+            return;
+        }
+
+        va_list args;
+        va_start(args, format);
+        std::vfprintf(file, format, args);
+        va_end(args);
+        std::fputc('\n', file);
+        std::fclose(file);
+    }
+
+    void redirect_android_stdio_to_log() {
+        if (android_log_path[0] == '\0') {
+            return;
+        }
+
+        std::fflush(nullptr);
+        FILE* stdout_file = std::freopen(android_log_path, "a", stdout);
+        FILE* stderr_file = std::freopen(android_log_path, "a", stderr);
+        if (stdout_file != nullptr) {
+            setvbuf(stdout, nullptr, _IOLBF, 0);
+        }
+        if (stderr_file != nullptr) {
+            setvbuf(stderr, nullptr, _IOLBF, 0);
+        }
+    }
+
+    void write_android_crash_file(const char* message) {
+        int fd = open(android_crash_path, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+        if (fd < 0) {
+            return;
+        }
+
+        const char* header = "Zelda64 Recompiled Android crash\n";
+        write(fd, header, std::strlen(header));
+        if (message != nullptr) {
+            write(fd, message, std::strlen(message));
+            write(fd, "\n", 1);
+        }
+        close(fd);
+    }
+
+    void android_signal_handler(int signal_number) {
+        char message[128];
+        std::snprintf(message, sizeof(message), "Native crash signal %d", signal_number);
+        write_android_crash_file(message);
+        append_android_log("%s", message);
+        signal(signal_number, SIG_DFL);
+        raise(signal_number);
+    }
+
+    void android_terminate_handler() {
+        const char* message = "Native terminate";
+        try {
+            std::exception_ptr exception = std::current_exception();
+            if (exception) {
+                std::rethrow_exception(exception);
+            }
+        } catch (const std::exception& exception) {
+            append_android_log("Native terminate: %s", exception.what());
+            write_android_crash_file(exception.what());
+            _exit(EXIT_FAILURE);
+        } catch (...) {
+            message = "Native terminate: unknown exception";
+        }
+
+        append_android_log("%s", message);
+        write_android_crash_file(message);
+        _exit(EXIT_FAILURE);
+    }
+
+    void install_android_crash_handlers() {
+        if (android_crash_handlers_installed) {
+            return;
+        }
+        android_crash_handlers_installed = true;
+
+        std::set_terminate(android_terminate_handler);
+        signal(SIGABRT, android_signal_handler);
+        signal(SIGBUS, android_signal_handler);
+        signal(SIGFPE, android_signal_handler);
+        signal(SIGILL, android_signal_handler);
+        signal(SIGSEGV, android_signal_handler);
+    }
+}
+
+extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeSetLogPaths(
+    JNIEnv* env,
+    jclass,
+    jstring log_path,
+    jstring crash_path) {
+    const char* log_path_chars = log_path != nullptr ? env->GetStringUTFChars(log_path, nullptr) : nullptr;
+    const char* crash_path_chars = crash_path != nullptr ? env->GetStringUTFChars(crash_path, nullptr) : nullptr;
+
+    copy_android_path(android_log_path, sizeof(android_log_path), log_path_chars);
+    copy_android_path(android_crash_path, sizeof(android_crash_path), crash_path_chars);
+
+    if (log_path_chars != nullptr) {
+        env->ReleaseStringUTFChars(log_path, log_path_chars);
+    }
+    if (crash_path_chars != nullptr) {
+        env->ReleaseStringUTFChars(crash_path, crash_path_chars);
+    }
+
+    redirect_android_stdio_to_log();
+    install_android_crash_handlers();
+    append_android_log("Native log path ready");
+}
+
 static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pending_mod_paths) {
     std::list<std::filesystem::path> paths;
     if (pending_mod_paths == nullptr || pending_mod_paths[0] == '\0') {
@@ -135,6 +266,12 @@ template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
     // TODO pop up an error
     ((void)fprintf(stderr, str, args), ...);
+#if defined(__ANDROID__)
+    char message[1024];
+    std::snprintf(message, sizeof(message), str, args...);
+    append_android_log("Fatal error: %s", message);
+    write_android_crash_file(message);
+#endif
     assert(false);
         
     ultramodern::error_handling::quick_exit(__FILE__, __LINE__, __FUNCTION__);
@@ -655,6 +792,11 @@ void reorder_texture_pack(recomp::mods::ModContext&) {
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+#if defined(__ANDROID__)
+    install_android_crash_handlers();
+    redirect_android_stdio_to_log();
+    append_android_log("Native main entered");
+#endif
     ZELDA_ANDROID_LOG("main entered");
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {

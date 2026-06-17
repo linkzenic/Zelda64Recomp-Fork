@@ -42,8 +42,13 @@ import org.libsdl.app.SDLActivity;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener {
     private static final String TAG = "ZeldaSDLActivity";
@@ -67,6 +72,8 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     };
     private static final String BUNDLED_MODS_ASSET_DIR = "bundled_mods";
     private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v2";
+    private static final String LOG_FILE_NAME = "Zelda64Recompiled.log";
+    private static final String CRASH_FILE_NAME = "Zelda64Recompiled_crash.txt";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -87,6 +94,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     public native void submitAndroidMotionSensor(int sensorType, float x, float y, float z, long timestampNs);
     private static native void nativeOnFileDialogResult(boolean success, String path);
     private static native void nativeOnFileDialogMultipleResult(boolean success, String[] paths);
+    private static native void nativeSetLogPaths(String logPath, String crashPath);
 
     private SharedPreferences preferences;
     private boolean activityResumed;
@@ -108,6 +116,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private Sensor accelerometerSensor;
     private Sensor gyroscopeSensor;
     private boolean motionSensorsRegistered;
+    private File logFile;
+    private File crashFile;
+    private Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int touchControllerAttachRetries;
     private int rightStickPointerId = MotionEvent.INVALID_POINTER_ID;
@@ -121,31 +132,46 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         currentActivity = this;
         lockLandscape();
         preferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        setupMotionSensors();
+        installJavaCrashHandler();
 
         File programDir = new File(getFilesDir(), "program");
         appDataDir = resolveAppDataDir();
+        prepareAppDataDir(appDataDir);
+        setupPersistentLogs();
+        setupMotionSensors();
         nativeModLibDir = new File(getCodeCacheDir(), "native_mods");
         if (!programDir.exists() && !programDir.mkdirs()) {
             Log.w(TAG, "Failed to create program dir: " + programDir);
+            appendLog("Failed to create program dir: " + programDir);
         }
         if (!nativeModLibDir.exists() && !nativeModLibDir.mkdirs()) {
             Log.w(TAG, "Failed to create native mod library dir: " + nativeModLibDir);
+            appendLog("Failed to create native mod library dir: " + nativeModLibDir);
         }
-        prepareAppDataDir(appDataDir);
 
         try {
             Log.i(TAG, "extracting bundled program assets");
+            appendLog("Extracting bundled program assets");
             copyAssetTree("program", programDir);
             seedBundledAndroidMods(appDataDir);
             Log.i(TAG, "bundled program assets extracted");
+            appendLog("Bundled program assets extracted");
         } catch (IOException e) {
             Log.e(TAG, "Failed to extract bundled program assets", e);
+            appendLog("Failed to extract bundled program assets", e);
         }
 
         Log.i(TAG, "calling SDLActivity.onCreate");
-        super.onCreate(savedInstanceState);
+        appendLog("Calling SDLActivity.onCreate");
+        try {
+            super.onCreate(savedInstanceState);
+        } catch (Throwable throwable) {
+            writeJavaCrash("Crash during SDLActivity.onCreate", throwable);
+            throw throwable;
+        }
         Log.i(TAG, "SDLActivity.onCreate returned");
+        appendLog("SDLActivity.onCreate returned");
+        configureNativeLogging();
         lockLandscape();
         applyImmersiveFullscreen();
         requestHighRefreshRate();
@@ -160,6 +186,10 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         Log.i(TAG, "APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         Log.i(TAG, "APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
         Log.i(TAG, "APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
+        appendLog("APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
+        appendLog("APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
+        appendLog("APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
+        appendLog("APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
 
         if (!usingPublicDataDir) {
             requestPublicStorageAccess();
@@ -226,6 +256,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         if (currentActivity == this) {
             currentActivity = null;
         }
+        appendLog("onDestroy");
         if (touchControllerAttached) {
             detachController();
             touchControllerAttached = false;
@@ -238,12 +269,14 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager == null) {
             Log.w(TAG, "Sensor manager is not available");
+            appendLog("Sensor manager is not available");
             return;
         }
 
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         Log.i(TAG, "Android motion sensors accel=" + (accelerometerSensor != null) + " gyro=" + (gyroscopeSensor != null));
+        appendLog("Android motion sensors accel=" + (accelerometerSensor != null) + " gyro=" + (gyroscopeSensor != null));
     }
 
     private void registerMotionSensors() {
@@ -324,6 +357,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         touchControllerAttached = attachController();
         if (!touchControllerAttached) {
             Log.w(TAG, "Touch controller attach failed; controls will retry on first touch");
+            appendLog("Touch controller attach failed; controls will retry");
             scheduleTouchControllerAttachRetry();
         } else {
             touchControllerAttachRetries = 0;
@@ -584,6 +618,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                 activity.startActivityForResult(intent, REQUEST_OPEN_FILE);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to launch file picker", e);
+                activity.appendLog("Failed to launch file picker", e);
                 nativeOnFileDialogResult(false, "");
             }
         });
@@ -611,6 +646,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                 activity.startActivityForResult(intent, REQUEST_OPEN_MOD_FILES);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to launch mod file picker", e);
+                activity.appendLog("Failed to launch mod file picker", e);
                 nativeOnFileDialogMultipleResult(false, new String[0]);
             }
         });
@@ -709,6 +745,97 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         window.setAttributes(params);
 
         Log.i(TAG, "Requested display refresh rate " + bestRefreshRate + " Hz modeId=" + bestModeId);
+        appendLog("Requested display refresh rate " + bestRefreshRate + " Hz modeId=" + bestModeId);
+    }
+
+    private void setupPersistentLogs() {
+        logFile = new File(appDataDir, LOG_FILE_NAME);
+        crashFile = new File(appDataDir, CRASH_FILE_NAME);
+        appendLog("");
+        appendLog("==== Zelda64 Recompiled Android startup ====");
+        appendLog("Device=" + Build.MANUFACTURER + " " + Build.MODEL
+                + " SDK=" + Build.VERSION.SDK_INT
+                + " ABI=" + Build.SUPPORTED_ABIS[0]);
+    }
+
+    private void installJavaCrashHandler() {
+        if (previousUncaughtExceptionHandler != null) {
+            return;
+        }
+
+        previousUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            writeJavaCrash("Uncaught Java exception on " + thread.getName(), throwable);
+            if (previousUncaughtExceptionHandler != null) {
+                previousUncaughtExceptionHandler.uncaughtException(thread, throwable);
+            } else {
+                System.exit(2);
+            }
+        });
+    }
+
+    private void configureNativeLogging() {
+        try {
+            nativeSetLogPaths(logFile.getAbsolutePath(), crashFile.getAbsolutePath());
+        } catch (UnsatisfiedLinkError error) {
+            appendLog("Native logging is unavailable", error);
+        }
+    }
+
+    private void appendLog(String message) {
+        if (logFile == null) {
+            return;
+        }
+
+        try (FileWriter writer = new FileWriter(logFile, true)) {
+            writer.write(timestamp());
+            writer.write(" ");
+            writer.write(message);
+            writer.write("\n");
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to write persistent log", e);
+        }
+    }
+
+    private void appendLog(String message, Throwable throwable) {
+        if (logFile == null) {
+            return;
+        }
+
+        try (PrintWriter writer = new PrintWriter(new FileWriter(logFile, true))) {
+            writer.print(timestamp());
+            writer.print(" ");
+            writer.println(message);
+            throwable.printStackTrace(writer);
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to write persistent log", e);
+        }
+    }
+
+    private void writeJavaCrash(String message, Throwable throwable) {
+        appendLog(message, throwable);
+        File targetCrashFile = crashFile != null ? crashFile : new File(getFilesDir(), CRASH_FILE_NAME);
+        File parent = targetCrashFile.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+
+        try (PrintWriter writer = new PrintWriter(new FileWriter(targetCrashFile, false))) {
+            writer.println("Zelda64 Recompiled Android crash");
+            writer.println(timestamp());
+            writer.println(message);
+            writer.println("Device: " + Build.MANUFACTURER + " " + Build.MODEL);
+            writer.println("Android SDK: " + Build.VERSION.SDK_INT);
+            writer.println("App version: " + getAndroidVersionName());
+            writer.println();
+            throwable.printStackTrace(writer);
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to write crash file", e);
+        }
+    }
+
+    private String timestamp() {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
     }
 
     private String getAndroidVersionName() {
