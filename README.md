@@ -1,6 +1,6 @@
 # Zelda64 Recompiled Android
 
-This fork packages [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp) for Android. It is an early beta Android port of Majora's Mask Recompiled with RT64 rendering, SDL input, public device storage, touch controls, Android motion controls, and Android-native mod support.
+This fork packages [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp) for Android. It is an early beta Android port of Recompiled with RT64 rendering, SDL input, public device storage, touch controls, Android motion controls, and Android-native mod support.
 
 ## Download
 
@@ -14,7 +14,7 @@ The Android release APK does not contain game assets. You must provide your own 
 
 - Android 7.0 or newer
 - ARM64 device
-- Vulkan-capable GPU and working Vulkan driver
+- Vulkan-capable GPU and working Vulkan driver (tested on Snapdragon 8 Gen 2 device, likely requires Adreno)
 - Enough storage for the app data folder, saves, mods, and texture packs
 
 This port has been tested primarily on Snapdragon/Adreno handhelds. If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver.
@@ -22,9 +22,7 @@ This port has been tested primarily on Snapdragon/Adreno handhelds. If graphics 
 ## What This Android Port Adds
 
 - Android APK packaging for Zelda64 Recompiled
-- Fullscreen landscape-only gameplay
 - Public app data in `/sdcard/Zelda64`
-- Android file picker support for ROM and mod installation
 - On-screen controller overlay
 - A Controls menu option to disable touch controls completely
 - Android accelerometer/gyro input for gyro aim
@@ -42,8 +40,6 @@ The app creates and uses:
   config/
 ```
 
-This is intentional. Android scoped storage makes app-private files difficult for users to manage, so this fork keeps the important user-facing folders in a normal device storage location. That makes it easier to add mods, copy saves, back up configs, and troubleshoot files without root access.
-
 On first launch, Android may ask for storage access. Grant it so the app can create and manage `/sdcard/Zelda64`.
 
 ## Mods
@@ -58,7 +54,7 @@ This fork includes a small set of Android-ready mods by default:
 
 - Linkzenic Save Editor
 - ProxyMM KV
-- yazmt Player Model Manager fsmodels plugin
+- yazmt Player Model Manager plugin
 
 ProxyMM KV and the player model manager are bundled as complete mod packages, not only as `.so` files. They need Android-native shared libraries, and users would otherwise be likely to download desktop packages whose native binaries are incompatible with Android. Bundling the full Android-ready packages prevents Linux `.so` files from replacing the Android builds.
 
