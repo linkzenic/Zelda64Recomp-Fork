@@ -5,6 +5,7 @@
 #include <SDL2/SDL_video.h>
 #endif
 #include <chrono>
+#include <fstream>
 #include <sstream>
 #include <filesystem>
 
@@ -825,8 +826,26 @@ void recompui::set_render_hooks() {
 }
 
 void recompui::message_box(const char* msg) {
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, zelda64::program_name.data(), msg, nullptr);
-    printf("[ERROR] %s\n", msg);
+    std::string display_msg = msg;
+#if defined(__ANDROID__)
+    if (display_msg.find("Unable to find compatible graphics device") != std::string::npos) {
+        if (const char* app_folder_path = std::getenv("APP_FOLDER_PATH");
+            app_folder_path != nullptr && app_folder_path[0] != '\0') {
+            const std::filesystem::path diagnostic_path = std::filesystem::path(app_folder_path) / "vulkan_device_error.txt";
+            std::ifstream diagnostic_file(diagnostic_path);
+            if (diagnostic_file) {
+                std::stringstream diagnostic_stream;
+                diagnostic_stream << diagnostic_file.rdbuf();
+                display_msg += "\n\nDetails were written to:\n";
+                display_msg += diagnostic_path.string();
+                display_msg += "\n\n";
+                display_msg += diagnostic_stream.str();
+            }
+        }
+    }
+#endif
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, zelda64::program_name.data(), display_msg.c_str(), nullptr);
+    printf("[ERROR] %s\n", display_msg.c_str());
 }
 
 void recompui::show_context(ContextId context, std::string_view param) {

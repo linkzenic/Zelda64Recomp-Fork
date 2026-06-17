@@ -64,6 +64,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "saves"
     };
     private static final String BUNDLED_MODS_ASSET_DIR = "bundled_mods";
+    private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -607,7 +608,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "Failed to read package version", e);
         }
-        return "0.1.1";
+        return "0.1.2";
     }
 
     private void updateAppAudioActive() {
@@ -730,9 +731,19 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             throw new IOException("Failed to create mods dir: " + modsDir);
         }
 
+        File seededMarker = new File(modsDir, BUNDLED_MODS_SEEDED_MARKER);
+        if (seededMarker.exists()) {
+            Log.i(TAG, "Bundled Android mods already seeded; skipping");
+            return;
+        }
+
         for (String filename : BUNDLED_ANDROID_MODS) {
             File outputFile = new File(modsDir, filename);
             copyAssetFile(BUNDLED_MODS_ASSET_DIR + "/" + filename, outputFile);
+        }
+
+        if (!seededMarker.createNewFile()) {
+            Log.w(TAG, "Failed to create bundled mods seeded marker: " + seededMarker);
         }
     }
 
