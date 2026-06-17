@@ -365,6 +365,7 @@ endif()
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     find_package(SDL2 REQUIRED)
     add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
+    add_compile_definitions("PLUME_SDL_VULKAN_ENABLED")
 
     # Generate icon_bytes.c from the app icon PNG.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
@@ -397,6 +398,7 @@ endif()
 if (CMAKE_SYSTEM_NAME MATCHES "Android")
     find_package(SDL2 REQUIRED)
     add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
+    add_compile_definitions("PLUME_SDL_VULKAN_ENABLED")
     target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 android log vulkan)
 endif()

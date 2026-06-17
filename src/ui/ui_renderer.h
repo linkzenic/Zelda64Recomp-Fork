@@ -3,13 +3,7 @@
 
 #include <memory>
 #include "recomp_ui.h"
-
-namespace RT64 {
-    struct RenderInterface;
-    struct RenderDevice;
-    struct RenderCommandList;
-    struct RenderFramebuffer;
-};
+#include "common/rt64_plume.h"
 
 namespace Rml {
     class RenderInterface;

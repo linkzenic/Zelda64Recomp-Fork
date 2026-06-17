@@ -852,18 +852,20 @@ int main(int argc, char** argv) {
 #endif
 
     ZELDA_ANDROID_LOG("calling recomp::start");
-    recomp::start(
-        project_version,
-        {},
-        rsp_callbacks,
-        renderer_callbacks,
-        audio_callbacks,
-        input_callbacks,
-        gfx_callbacks,
-        thread_callbacks,
-        error_handling_callbacks,
-        threads_callbacks
-    );
+    recomp::Configuration recomp_config{
+        .project_version = project_version,
+        .window_handle = {},
+        .rsp_callbacks = rsp_callbacks,
+        .renderer_callbacks = renderer_callbacks,
+        .audio_callbacks = audio_callbacks,
+        .input_callbacks = input_callbacks,
+        .gfx_callbacks = gfx_callbacks,
+        .events_callbacks = thread_callbacks,
+        .error_handling_callbacks = error_handling_callbacks,
+        .threads_callbacks = threads_callbacks,
+        .message_queue_control = {},
+    };
+    recomp::start(recomp_config);
     ZELDA_ANDROID_LOG("recomp::start returned");
 
 #if defined(__ANDROID__)
