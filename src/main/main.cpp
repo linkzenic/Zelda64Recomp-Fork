@@ -722,15 +722,13 @@ int main(int argc, char** argv) {
     std::filesystem::current_path("/var/data", ec);
 #endif
 
-#if !defined(__ANDROID__)
     // Initialize SDL audio and set the output frequency.
     ZELDA_ANDROID_LOG("initializing SDL audio");
-    SDL_InitSubSystem(SDL_INIT_AUDIO);
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+        exit_error("SDL error initializing audio: %s\n", SDL_GetError());
+    }
     reset_audio(48000);
     ZELDA_ANDROID_LOG("SDL audio initialized");
-#else
-    ZELDA_ANDROID_LOG("skipping SDL audio on Android");
-#endif
 
     // Source controller mappings file
     std::u8string controller_db_path = (zelda64::get_program_path() / "recompcontrollerdb.txt").u8string();
@@ -795,15 +793,11 @@ int main(int argc, char** argv) {
         .update_gfx = update_gfx,
     };
 
-#if !defined(__ANDROID__)
     ultramodern::audio_callbacks_t audio_callbacks{
         .queue_samples = queue_samples,
         .get_frames_remaining = get_frames_remaining,
         .set_frequency = set_frequency,
     };
-#else
-    ultramodern::audio_callbacks_t audio_callbacks{};
-#endif
 
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recomp::poll_inputs,
