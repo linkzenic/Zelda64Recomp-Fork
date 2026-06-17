@@ -256,7 +256,10 @@ if (APPLE)
 endif()
 
 if (CMAKE_SYSTEM_NAME MATCHES "Android")
-    list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/android/android_lifecycle.cpp)
+    list(APPEND SOURCES
+        ${CMAKE_SOURCE_DIR}/src/android/android_lifecycle.cpp
+        ${CMAKE_SOURCE_DIR}/src/android/android_logging.cpp
+    )
 endif()
 
 target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE

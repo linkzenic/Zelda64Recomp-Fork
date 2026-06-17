@@ -84,6 +84,8 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "yazmt_mm_playermodelmanager_fsmodels_extlib.so"
     };
     private static ZeldaSDLActivity currentActivity;
+    private static Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
+    private static boolean javaCrashHandlerInstalled;
 
     public static native void nativeSetAndroidSurfaceReady(boolean ready);
     public static native void nativeSetAppAudioActive(boolean active);
@@ -118,7 +120,6 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private boolean motionSensorsRegistered;
     private File logFile;
     private File crashFile;
-    private Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int touchControllerAttachRetries;
     private int rightStickPointerId = MotionEvent.INVALID_POINTER_ID;
@@ -759,13 +760,17 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     }
 
     private void installJavaCrashHandler() {
-        if (previousUncaughtExceptionHandler != null) {
+        if (javaCrashHandlerInstalled) {
             return;
         }
 
+        javaCrashHandlerInstalled = true;
         previousUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            writeJavaCrash("Uncaught Java exception on " + thread.getName(), throwable);
+            ZeldaSDLActivity activity = currentActivity;
+            if (activity != null) {
+                activity.writeJavaCrash("Uncaught Java exception on " + thread.getName(), throwable);
+            }
             if (previousUncaughtExceptionHandler != null) {
                 previousUncaughtExceptionHandler.uncaughtException(thread, throwable);
             } else {
