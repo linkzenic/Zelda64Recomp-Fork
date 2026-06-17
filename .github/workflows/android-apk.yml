@@ -35,6 +35,8 @@ jobs:
           set -euo pipefail
           echo "ANDROID_PREFIX_ROOT=${GITHUB_WORKSPACE}/.android-prefixes" >> "$GITHUB_ENV"
           echo "ZELDA_ANDROID_FILE_TO_C=${RUNNER_TEMP}/zelda64-file-to-c" >> "$GITHUB_ENV"
+          echo "ZELDA_ANDROID_SDL2_PREFIX=${GITHUB_WORKSPACE}/.android-prefixes/SDL2-2.32.10-android-arm64" >> "$GITHUB_ENV"
+          echo "ZELDA_ANDROID_FREETYPE_PREFIX=${GITHUB_WORKSPACE}/.android-prefixes/freetype-2.13.3-android-arm64" >> "$GITHUB_ENV"
 
       - name: Restore generated runtime sources
         shell: bash
