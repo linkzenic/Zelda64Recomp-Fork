@@ -611,7 +611,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "Failed to read package version", e);
         }
-        return "0.1.3";
+        return "0.1.4";
     }
 
     private void updateAppAudioActive() {
