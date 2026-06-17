@@ -137,7 +137,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null
+          yes | sdkmanager --licenses >/dev/null || {
+            status=$?
+            if [[ "$status" -ne 141 ]]; then
+              exit "$status"
+            fi
+          }
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
