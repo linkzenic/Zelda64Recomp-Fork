@@ -20,9 +20,6 @@ jobs:
   build-android-apk:
     name: Android APK
     runs-on: ubuntu-latest
-    env:
-      PATCHES_C_COMPILER: clang
-      PATCHES_LD: ld.lld
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -117,9 +114,13 @@ jobs:
           fi
 
       - name: Install host tools
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y clang lld ninja-build zip unzip xz-utils
+          echo "PATCHES_C_COMPILER=$(command -v clang)" >> "$GITHUB_ENV"
+          echo "PATCHES_LD=$(command -v ld.lld)" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v4
