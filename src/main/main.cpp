@@ -15,8 +15,10 @@
 #include <unistd.h>
 #include "../android/android_logging.h"
 #define ZELDA_ANDROID_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaNative", __VA_ARGS__)
+#define ZELDA_ANDROID_STAGE(stage) zelda64::android::set_crash_stage(stage)
 #else
 #define ZELDA_ANDROID_LOG(...)
+#define ZELDA_ANDROID_STAGE(stage)
 #endif
 
 #if !defined(__ANDROID__)
@@ -665,6 +667,7 @@ int main(int argc, char** argv) {
 #if defined(__ANDROID__)
     zelda64::android::install_crash_handlers();
     zelda64::android::redirect_stdio_to_log();
+    ZELDA_ANDROID_STAGE("native main entered");
     zelda64::android::append_log("Native main entered");
 #endif
     ZELDA_ANDROID_LOG("main entered");
@@ -738,11 +741,13 @@ int main(int argc, char** argv) {
 #endif
 
     // Initialize SDL audio and set the output frequency.
+    ZELDA_ANDROID_STAGE("initializing SDL audio");
     ZELDA_ANDROID_LOG("initializing SDL audio");
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
         exit_error("SDL error initializing audio: %s\n", SDL_GetError());
     }
     reset_audio(48000);
+    ZELDA_ANDROID_STAGE("SDL audio initialized");
     ZELDA_ANDROID_LOG("SDL audio initialized");
 
     // Source controller mappings file
@@ -752,6 +757,7 @@ int main(int argc, char** argv) {
     }
 
     recomp::register_config_path(zelda64::get_app_folder_path());
+    ZELDA_ANDROID_STAGE("registered config path");
     ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
 
     // Register supported games and patches
@@ -770,6 +776,7 @@ int main(int argc, char** argv) {
 
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
     recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
+    ZELDA_ANDROID_STAGE("registered embedded mods");
 
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
@@ -786,12 +793,15 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     recompui::register_ui_exports();
     recomputil::register_data_api_exports();
+    ZELDA_ANDROID_STAGE("registered exports");
     ZELDA_ANDROID_LOG("registered exports");
 
+    ZELDA_ANDROID_STAGE("registering overlays and patches");
     zelda64::register_overlays();
     zelda64::register_patches();
     recomputil::init_extended_actor_data();
     zelda64::load_config();
+    ZELDA_ANDROID_STAGE("loaded config");
     ZELDA_ANDROID_LOG("loaded config");
 
     recomp::rsp::callbacks_t rsp_callbacks{
@@ -848,9 +858,11 @@ int main(int argc, char** argv) {
     recomp::mods::register_mod_container_type("rtz", std::vector{ texture_pack_content_type_id }, false);
 
 #if defined(__ANDROID__)
+    ZELDA_ANDROID_STAGE("installing pending Android mods");
     install_pending_android_mods();
 #endif
 
+    ZELDA_ANDROID_STAGE("calling recomp::start");
     ZELDA_ANDROID_LOG("calling recomp::start");
     recomp::Configuration recomp_config{
         .project_version = project_version,
@@ -866,6 +878,7 @@ int main(int argc, char** argv) {
         .message_queue_control = {},
     };
     recomp::start(recomp_config);
+    ZELDA_ANDROID_STAGE("recomp::start returned");
     ZELDA_ANDROID_LOG("recomp::start returned");
 
 #if defined(__ANDROID__)
