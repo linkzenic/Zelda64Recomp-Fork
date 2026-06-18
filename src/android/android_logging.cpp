@@ -14,6 +14,8 @@
 #include <inttypes.h>
 #include <jni.h>
 #include <signal.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #include <unwind.h>
 
@@ -165,6 +167,12 @@ void write_crash_report(const char* message, siginfo_t* info) {
 
     char line[256];
     std::snprintf(line, sizeof(line), "Stage: %s\n", crash_stage);
+    write_all(fd, line);
+
+    char thread_name[64] = {};
+    prctl(PR_GET_NAME, thread_name);
+    std::snprintf(line, sizeof(line), "Host thread tid: %ld\nHost thread name: %s\n", static_cast<long>(syscall(SYS_gettid)),
+                  thread_name[0] != '\0' ? thread_name : "<unknown>");
     write_all(fd, line);
 
     if (info != nullptr) {
