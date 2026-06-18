@@ -74,7 +74,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "saves"
     };
     private static final String BUNDLED_MODS_ASSET_DIR = "bundled_mods";
-    private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v2";
+    private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v3";
     private static final String LOG_FILE_NAME = "Zelda64Recompiled.log";
     private static final String CRASH_FILE_NAME = "Zelda64Recompiled_crash.txt";
     private static final String SAFE_MODE_FILE_NAME = "Zelda64Recompiled_safe_mode.flag";
@@ -90,6 +90,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "yazmt_mm_playermodelmanager.nrm",
             "yazmt_mm_playermodelmanager_fsmodels.nrm",
             "yazmt_mm_playermodelmanager_fsmodels_extlib.so"
+    };
+    private static final String[] OBSOLETE_BUNDLED_MODS = {
+            "mm_recomp_save_editor-2.nrm"
     };
     private static ZeldaSDLActivity currentActivity;
     private static Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
@@ -1198,6 +1201,8 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         }
 
         File seededMarker = new File(modsDir, BUNDLED_MODS_SEEDED_MARKER);
+        removeObsoleteBundledMods(modsDir);
+
         if (seededMarker.exists()) {
             Log.i(TAG, "Bundled Android mods already seeded; skipping");
             return;
@@ -1210,6 +1215,15 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
 
         if (!seededMarker.createNewFile()) {
             Log.w(TAG, "Failed to create bundled mods seeded marker: " + seededMarker);
+        }
+    }
+
+    private void removeObsoleteBundledMods(File modsDir) {
+        for (String filename : OBSOLETE_BUNDLED_MODS) {
+            File oldFile = new File(modsDir, filename);
+            if (oldFile.exists() && !oldFile.delete()) {
+                Log.w(TAG, "Failed to remove obsolete bundled mod: " + oldFile);
+            }
         }
     }
 
