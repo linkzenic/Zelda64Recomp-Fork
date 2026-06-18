@@ -302,8 +302,18 @@ void recomp::handle_events() {
     SDL_Event cur_event;
     static bool started = false;
     static bool exited = false;
+    static uint32_t poll_count = 0;
+    if (poll_count < 10) {
+        printf("[Input] handle_events begin %u\n", poll_count);
+    }
     while (SDL_PollEvent(&cur_event) && !exited) {
+        if (poll_count < 20 || cur_event.type == SDL_EventType::SDL_QUIT) {
+            printf("[Input] SDL event type=%u\n", cur_event.type);
+        }
         exited = sdl_event_filter(nullptr, &cur_event);
+        if (exited) {
+            printf("[Input] SDL event requested exit type=%u\n", cur_event.type);
+        }
 
         // Lock the cursor if all three conditions are true: mouse aiming is enabled, game input is not disabled, and the game has been started. 
         bool cursor_locked = (recomp::get_mouse_sensitivity() != 0) && !recomp::game_input_disabled() && ultramodern::is_game_started();
@@ -320,8 +330,15 @@ void recomp::handle_events() {
 
     if (!started && ultramodern::is_game_started()) {
         started = true;
+        printf("[Input] process_game_started begin\n");
         recompui::process_game_started();
+        printf("[Input] process_game_started end\n");
     }
+
+    if (poll_count < 10) {
+        printf("[Input] handle_events end %u\n", poll_count);
+    }
+    ++poll_count;
 }
 
 constexpr SDL_GameControllerButton SDL_CONTROLLER_BUTTON_SOUTH = SDL_CONTROLLER_BUTTON_A;

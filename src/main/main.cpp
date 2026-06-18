@@ -276,10 +276,16 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
 void update_gfx(void*) {
     static uint32_t update_count = 0;
+    if (update_count < 10) {
+        std::printf("[Android] update_gfx begin %u\n", update_count);
+    }
     if ((update_count++ % 600) == 0) {
         ZELDA_ANDROID_LOG("update_gfx count=%u", update_count);
     }
     recomp::handle_events();
+    if (update_count <= 10) {
+        std::printf("[Android] update_gfx end %u\n", update_count - 1);
+    }
 }
 
 static SDL_AudioCVT audio_convert;
