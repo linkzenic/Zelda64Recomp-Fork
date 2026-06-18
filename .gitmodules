@@ -19,3 +19,6 @@
 [submodule "Zelda64RecompSyms"]
 	path = Zelda64RecompSyms
 	url = https://github.com/Zelda64Recomp/Zelda64RecompSyms
+[submodule "lib/adrenotools"]
+	path = lib/adrenotools
+	url = https://github.com/bylaws/libadrenotools.git

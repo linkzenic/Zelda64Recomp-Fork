@@ -90,6 +90,13 @@ endif()
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/adrenotools ${CMAKE_BINARY_DIR}/adrenotools)
+    target_include_directories(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/lib/adrenotools/include)
+    target_compile_definitions(rt64 PRIVATE ZELDA_ANDROID_ADRENOTOOLS=1)
+endif()
+
 # set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
 SET(LUNASVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -400,7 +407,8 @@ if (CMAKE_SYSTEM_NAME MATCHES "Android")
     add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
     add_compile_definitions("PLUME_SDL_VULKAN_ENABLED")
     target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 android log vulkan)
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 android log vulkan adrenotools)
+    add_dependencies(${ZELDA_RECOMP_TARGET} hook_impl main_hook file_redirect_hook gsl_alloc_hook)
 endif()
 
 target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE

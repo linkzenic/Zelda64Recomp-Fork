@@ -197,6 +197,26 @@ namespace zelda64 {
 #endif
     }
 
+    void open_driver_file_dialog() {
+#ifdef __ANDROID__
+        if (!launch_android_file_dialog("openDriverFileDialog")) {
+            show_error_message_box("GPU driver", "Unable to open the Android file picker.");
+        }
+#else
+        show_error_message_box("GPU driver", "Custom GPU drivers are only supported on Android.");
+#endif
+    }
+
+    void clear_custom_driver() {
+#ifdef __ANDROID__
+        if (!launch_android_file_dialog("clearCustomDriver")) {
+            show_error_message_box("GPU driver", "Unable to clear the custom GPU driver.");
+        }
+#else
+        show_error_message_box("GPU driver", "Custom GPU drivers are only supported on Android.");
+#endif
+    }
+
     void show_error_message_box(const char *title, const char *message) {
 #ifdef __APPLE__
     std::string title_copy(title);

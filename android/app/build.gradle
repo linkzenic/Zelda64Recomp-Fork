@@ -30,8 +30,8 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 35
-        versionCode 9
-        versionName zeldaProbe ? '0.1.8-android-sdl-probe' : '0.1.8'
+        versionCode 10
+        versionName zeldaProbe ? '0.1.9-android-sdl-probe' : '0.1.9'
 
         externalNativeBuild {
             cmake {
@@ -141,6 +141,43 @@ tasks.register('copySdl2JniLib', Copy) {
     dependsOn tasks.named('validateAndroidBuildEnvironment')
     from("${sdl2Prefix}/lib/libSDL2.so")
     into(new File(generatedJniLibsDir, 'arm64-v8a'))
+}
+
+def registerAdrenoToolsHookCopyTask = { String variantName, String cmakeVariantName ->
+    String capitalizedVariantName = variantName.capitalize()
+    String copyTaskName = "copy${capitalizedVariantName}AdrenoToolsHookJniLibs"
+    tasks.register(copyTaskName, Copy) {
+        dependsOn tasks.named("buildCMake${capitalizedVariantName}[arm64-v8a][main]")
+        doFirst {
+            delete fileTree(new File(generatedJniLibsDir, 'arm64-v8a')) {
+                include '**/libhook_impl.so'
+                include '**/libmain_hook.so'
+                include '**/libfile_redirect_hook.so'
+                include '**/libgsl_alloc_hook.so'
+            }
+        }
+        from(fileTree(new File(projectDir, ".cxx/${cmakeVariantName}")) {
+            include '**/libhook_impl.so'
+            include '**/libmain_hook.so'
+            include '**/libfile_redirect_hook.so'
+            include '**/libgsl_alloc_hook.so'
+        })
+        into(new File(generatedJniLibsDir, 'arm64-v8a'))
+        eachFile { details ->
+            details.path = details.name
+        }
+        includeEmptyDirs = false
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+
+    tasks.named("merge${capitalizedVariantName}JniLibFolders") {
+        dependsOn tasks.named(copyTaskName)
+    }
+}
+
+afterEvaluate {
+    registerAdrenoToolsHookCopyTask.call('debug', 'Debug')
+    registerAdrenoToolsHookCopyTask.call('release', 'RelWithDebInfo')
 }
 
 if (zeldaRuntimeApk) {

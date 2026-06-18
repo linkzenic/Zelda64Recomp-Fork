@@ -72,6 +72,36 @@
         }
     }
 
+    .config-option__action-label {
+        @extend %label-sm;
+        @extend %nav-all;
+        @include trans-colors-opa;
+        display: block;
+        width: auto;
+        height: auto;
+        margin: space(4) space(12) 0;
+        padding: space(8) 0;
+        border-width: 0;
+        border-radius: 0;
+        background-color: transparent;
+        color: $color-text-inactive;
+        tab-index: auto;
+
+        &:hover,
+        &:focus {
+            color: $color-text;
+            cursor: pointer;
+        }
+
+        .rmlui-window:not([mouse-active]) &:focus {
+            transition: none;
+            animation: $focus-anim-border;
+            border-bottom: 1dp;
+            border-color: $color-secondary;
+            color: $color-secondary;
+        }
+    }
+
     .config-option__checkbox-wrapper {
         @include trans-colors-opa;
         width: space(32);

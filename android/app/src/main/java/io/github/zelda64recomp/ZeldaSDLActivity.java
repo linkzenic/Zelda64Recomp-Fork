@@ -49,6 +49,8 @@ import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener {
     private static final String TAG = "ZeldaSDLActivity";
@@ -60,6 +62,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final int REQUEST_OPEN_FILE = 0x5A64;
     private static final int REQUEST_STORAGE_PERMISSION = 0x5A65;
     private static final int REQUEST_OPEN_MOD_FILES = 0x5A66;
+    private static final int REQUEST_OPEN_DRIVER_FILE = 0x5A67;
     private static final String PUBLIC_FOLDER_NAME = "Zelda64";
     private static final String PREFS_NAME = "io.github.zelda64recomp.prefs";
     private static final String PREF_TOUCH_CONTROLS_DISABLED = "touchControlsDisabled";
@@ -76,6 +79,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final String CRASH_FILE_NAME = "Zelda64Recompiled_crash.txt";
     private static final String SAFE_MODE_FILE_NAME = "Zelda64Recompiled_safe_mode.flag";
     private static final String AUTO_SAFE_MODE_FILE_NAME = "Zelda64Recompiled_auto_safe_mode.flag";
+    private static final String CUSTOM_DRIVER_DIR_NAME = "custom_driver";
+    private static final String CUSTOM_DRIVER_NAME_FILE = "selected_driver.txt";
+    private static final String CUSTOM_DRIVER_DISPLAY_NAME_FILE = "selected_driver_display.txt";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -124,6 +130,11 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private File crashFile;
     private File safeModeFile;
     private File autoSafeModeFile;
+    private File customDriverDir;
+    private File customDriverNameFile;
+    private File customDriverDisplayNameFile;
+    private String selectedCustomDriverName;
+    private String selectedCustomDriverDisplayName;
     private boolean safeModeEnabled;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int touchControllerAttachRetries;
@@ -145,6 +156,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         prepareAppDataDir(appDataDir);
         setupPersistentLogs();
         configureSafeModeState();
+        configureCustomDriverState();
         setupMotionSensors();
         nativeModLibDir = new File(getCodeCacheDir(), "native_mods");
         if (!programDir.exists() && !programDir.mkdirs()) {
@@ -188,16 +200,20 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         nativeSetenv("APP_PROGRAM_PATH", programDir.getAbsolutePath());
         nativeSetenv("APP_FOLDER_PATH", appDataDir.getAbsolutePath());
         nativeSetenv("APP_NATIVE_LIBS_PATH", nativeModLibDir.getAbsolutePath());
+        nativeSetenv("APP_NATIVE_LIBRARY_DIR", getApplicationInfo().nativeLibraryDir);
         nativeSetenv("APP_ANDROID_VERSION_NAME", getAndroidVersionName());
         nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
+        applyCustomDriverEnvironment();
         Log.i(TAG, "APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         Log.i(TAG, "APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         Log.i(TAG, "APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
+        Log.i(TAG, "APP_NATIVE_LIBRARY_DIR=" + getApplicationInfo().nativeLibraryDir);
         Log.i(TAG, "APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
         Log.i(TAG, "APP_SAFE_MODE=" + safeModeEnabled);
         appendLog("APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         appendLog("APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         appendLog("APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
+        appendLog("APP_NATIVE_LIBRARY_DIR=" + getApplicationInfo().nativeLibraryDir);
         appendLog("APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
         appendLog("APP_SAFE_MODE=" + safeModeEnabled);
 
@@ -662,6 +678,45 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         });
     }
 
+    public static void openDriverFileDialog() {
+        ZeldaSDLActivity activity = currentActivity;
+        if (activity == null) {
+            Log.w(TAG, "openDriverFileDialog requested without an active activity");
+            return;
+        }
+
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                        "application/zip",
+                        "application/octet-stream",
+                        "application/x-zip-compressed"
+                });
+                activity.startActivityForResult(intent, REQUEST_OPEN_DRIVER_FILE);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to launch driver file picker", e);
+                activity.appendLog("Failed to launch driver file picker", e);
+                Toast.makeText(activity, "Unable to open file picker.", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    public static void clearCustomDriver() {
+        ZeldaSDLActivity activity = currentActivity;
+        if (activity == null) {
+            Log.w(TAG, "clearCustomDriver requested without an active activity");
+            return;
+        }
+
+        activity.runOnUiThread(() -> {
+            activity.clearCustomDriverSelection();
+            Toast.makeText(activity, "Using system GPU driver after restart.", Toast.LENGTH_LONG).show();
+        });
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_OPEN_FILE) {
@@ -678,6 +733,15 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                 handlePickedModFiles(data);
             } else {
                 nativeOnFileDialogMultipleResult(false, new String[0]);
+            }
+            return;
+        }
+
+        if (requestCode == REQUEST_OPEN_DRIVER_FILE) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                handlePickedDriverFile(data.getData());
+            } else {
+                Toast.makeText(this, "GPU driver selection cancelled.", Toast.LENGTH_SHORT).show();
             }
             return;
         }
@@ -771,22 +835,38 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     }
 
     private void configureSafeModeState() {
-        boolean autoSafeMode = autoSafeModeFile != null && autoSafeModeFile.exists();
-        if (autoSafeMode) {
-            appendLog("Auto safe mode marker found from previous crash");
-        }
-
-        safeModeEnabled = (safeModeFile != null && safeModeFile.exists()) || autoSafeMode;
-        if (safeModeEnabled) {
-            writeFlagFile(safeModeFile, "Safe mode enabled\n");
+        if (safeModeFile != null && safeModeFile.exists() && !safeModeFile.delete()) {
+            appendLog("Failed to clear legacy safe mode marker");
         }
         if (autoSafeModeFile != null && autoSafeModeFile.exists() && !autoSafeModeFile.delete()) {
             appendLog("Failed to clear auto safe mode marker");
         }
 
-        if (safeModeEnabled) {
-            appendLog("Safe mode enabled; external mods will be skipped");
+        safeModeEnabled = false;
+    }
+
+    private void configureCustomDriverState() {
+        customDriverDir = new File(getFilesDir(), CUSTOM_DRIVER_DIR_NAME);
+        customDriverNameFile = new File(customDriverDir, CUSTOM_DRIVER_NAME_FILE);
+        customDriverDisplayNameFile = new File(customDriverDir, CUSTOM_DRIVER_DISPLAY_NAME_FILE);
+
+        String driverName = readSelectedDriverName();
+        if (driverName == null) {
+            selectedCustomDriverName = null;
+            selectedCustomDriverDisplayName = null;
+            return;
         }
+
+        File driverFile = new File(customDriverDir, driverName);
+        if (!driverFile.exists()) {
+            appendLog("Selected custom GPU driver is missing; clearing selection");
+            clearCustomDriverFiles();
+            return;
+        }
+
+        selectedCustomDriverName = driverName;
+        selectedCustomDriverDisplayName = readSelectedDriverDisplayName(driverName);
+        appendLog("Custom GPU driver selected: " + selectedCustomDriverDisplayName + " (" + driverName + ")");
     }
 
     private void installJavaCrashHandler() {
@@ -884,6 +964,100 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             writer.write(contents);
         } catch (IOException e) {
             Log.w(TAG, "Failed to write flag file: " + targetFile, e);
+        }
+    }
+
+    private String readSelectedDriverName() {
+        return readCustomDriverMetadata(customDriverNameFile);
+    }
+
+    private String readSelectedDriverDisplayName(String fallbackName) {
+        String displayName = readCustomDriverMetadata(customDriverDisplayNameFile);
+        return displayName != null ? displayName : fallbackName;
+    }
+
+    private String readCustomDriverMetadata(File metadataFile) {
+        if (metadataFile == null || !metadataFile.exists()) {
+            return null;
+        }
+
+        try (InputStream input = new java.io.FileInputStream(metadataFile)) {
+            byte[] bytes = new byte[(int) metadataFile.length()];
+            int offset = 0;
+            while (offset < bytes.length) {
+                int read = input.read(bytes, offset, bytes.length - offset);
+                if (read < 0) {
+                    break;
+                }
+                offset += read;
+            }
+
+            String name = new String(bytes, 0, offset, java.nio.charset.StandardCharsets.UTF_8).trim();
+            return name.isEmpty() ? null : sanitizeFileName(name);
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to read custom GPU driver metadata", e);
+            return null;
+        }
+    }
+
+    private void writeSelectedDriverMetadata(String driverName, String displayName) throws IOException {
+        if (!customDriverDir.exists() && !customDriverDir.mkdirs()) {
+            throw new IOException("Failed to create custom driver dir: " + customDriverDir);
+        }
+        try (FileWriter writer = new FileWriter(customDriverNameFile, false)) {
+            writer.write(driverName);
+            writer.write("\n");
+        }
+        try (FileWriter writer = new FileWriter(customDriverDisplayNameFile, false)) {
+            writer.write(displayName);
+            writer.write("\n");
+        }
+    }
+
+    private void setCustomDriverEnvironment(String driverName, String displayName) {
+        selectedCustomDriverName = driverName;
+        selectedCustomDriverDisplayName = displayName;
+        applyCustomDriverEnvironment();
+    }
+
+    private void applyCustomDriverEnvironment() {
+        if (selectedCustomDriverName == null || selectedCustomDriverName.isEmpty()) {
+            clearCustomDriverEnvironment();
+            return;
+        }
+
+        String driverDir = customDriverDir.getAbsolutePath();
+        if (!driverDir.endsWith(File.separator)) {
+            driverDir += File.separator;
+        }
+
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_DIR", driverDir);
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_NAME", selectedCustomDriverName);
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_DISPLAY_NAME",
+                selectedCustomDriverDisplayName != null && !selectedCustomDriverDisplayName.isEmpty()
+                        ? selectedCustomDriverDisplayName : selectedCustomDriverName);
+    }
+
+    private void clearCustomDriverEnvironment() {
+        selectedCustomDriverName = null;
+        selectedCustomDriverDisplayName = null;
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_DIR", "");
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_NAME", "");
+        nativeSetenv("APP_CUSTOM_VULKAN_DRIVER_DISPLAY_NAME", "");
+    }
+
+    private void clearCustomDriverSelection() {
+        clearCustomDriverEnvironment();
+        clearCustomDriverFiles();
+        appendLog("Custom GPU driver cleared");
+    }
+
+    private void clearCustomDriverFiles() {
+        selectedCustomDriverName = null;
+        selectedCustomDriverDisplayName = null;
+        deleteRecursively(customDriverDir);
+        if (!customDriverDir.exists() && !customDriverDir.mkdirs()) {
+            Log.w(TAG, "Failed to recreate custom driver dir: " + customDriverDir);
         }
     }
 
@@ -1137,6 +1311,124 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         }
     }
 
+    private void handlePickedDriverFile(Uri uri) {
+        try {
+            if (customDriverDir == null) {
+                customDriverDir = new File(getFilesDir(), CUSTOM_DRIVER_DIR_NAME);
+                customDriverNameFile = new File(customDriverDir, CUSTOM_DRIVER_NAME_FILE);
+                customDriverDisplayNameFile = new File(customDriverDir, CUSTOM_DRIVER_DISPLAY_NAME_FILE);
+            }
+
+            deleteRecursively(customDriverDir);
+            if (!customDriverDir.exists() && !customDriverDir.mkdirs()) {
+                throw new IOException("Failed to create custom driver dir: " + customDriverDir);
+            }
+
+            String displayName = sanitizeFileName(getDisplayName(uri));
+            java.util.ArrayList<String> copiedLibraries = new java.util.ArrayList<>();
+            if (displayName.toLowerCase(Locale.US).endsWith(".zip")) {
+                copyDriverZip(uri, copiedLibraries);
+            } else {
+                String copiedName = copyDriverSharedLibrary(uri, displayName);
+                copiedLibraries.add(copiedName);
+            }
+
+            String driverName = chooseDriverLibrary(copiedLibraries);
+            if (driverName == null) {
+                clearCustomDriverSelection();
+                Toast.makeText(this, "No Vulkan driver .so found in selected file.", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            writeSelectedDriverMetadata(driverName, displayName);
+            setCustomDriverEnvironment(driverName, displayName);
+            appendLog("Custom GPU driver imported: " + displayName + " (" + driverName + ")");
+            Toast.makeText(this, "Custom GPU driver selected after restart: " + displayName, Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to import custom GPU driver", e);
+            appendLog("Failed to import custom GPU driver", e);
+            clearCustomDriverSelection();
+            Toast.makeText(this, "Failed to import GPU driver.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void copyDriverZip(Uri uri, java.util.ArrayList<String> copiedLibraries) throws IOException {
+        InputStream rawInput = getContentResolver().openInputStream(uri);
+        if (rawInput == null) {
+            throw new IOException("Content resolver returned null stream for " + uri);
+        }
+
+        try (InputStream input = rawInput;
+             ZipInputStream zipInput = new ZipInputStream(input)) {
+            ZipEntry entry;
+            byte[] buffer = new byte[1024 * 1024];
+            while ((entry = zipInput.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+
+                String entryName = sanitizeFileName(new File(entry.getName()).getName());
+                if (!entryName.toLowerCase(Locale.US).endsWith(".so")) {
+                    continue;
+                }
+
+                File outputFile = new File(customDriverDir, entryName);
+                try (FileOutputStream output = new FileOutputStream(outputFile)) {
+                    int bytesRead;
+                    while ((bytesRead = zipInput.read(buffer)) != -1) {
+                        output.write(buffer, 0, bytesRead);
+                    }
+                }
+                outputFile.setReadable(true, true);
+                outputFile.setExecutable(true, true);
+                copiedLibraries.add(entryName);
+            }
+        }
+    }
+
+    private String copyDriverSharedLibrary(Uri uri, String displayName) throws IOException {
+        String outputName = displayName.toLowerCase(Locale.US).endsWith(".so")
+                ? displayName
+                : "libvulkan_freedreno.so";
+        File outputFile = new File(customDriverDir, outputName);
+
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(outputFile)) {
+            if (input == null) {
+                throw new IOException("Content resolver returned null stream for " + uri);
+            }
+
+            byte[] buffer = new byte[1024 * 1024];
+            int bytesRead;
+            while ((bytesRead = input.read(buffer)) != -1) {
+                output.write(buffer, 0, bytesRead);
+            }
+        }
+
+        outputFile.setReadable(true, true);
+        outputFile.setExecutable(true, true);
+        return outputName;
+    }
+
+    private String chooseDriverLibrary(java.util.ArrayList<String> libraries) {
+        if (libraries.isEmpty()) {
+            return null;
+        }
+
+        for (String name : libraries) {
+            if ("libvulkan_freedreno.so".equals(name)) {
+                return name;
+            }
+        }
+        for (String name : libraries) {
+            String lowerName = name.toLowerCase(Locale.US);
+            if (lowerName.contains("vulkan") && lowerName.endsWith(".so")) {
+                return name;
+            }
+        }
+        return libraries.get(0);
+    }
+
     private String copyPickedModFile(Uri uri, File importDir) throws IOException {
         String displayName = getDisplayName(uri);
         File outputFile = uniqueFileForName(importDir, sanitizeFileName(displayName));
@@ -1156,6 +1448,25 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
 
         Log.i(TAG, "Copied selected mod file to " + outputFile.getAbsolutePath());
         return outputFile.getAbsolutePath();
+    }
+
+    private static void deleteRecursively(File file) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+
+        if (!file.delete()) {
+            Log.w(TAG, "Failed to delete " + file);
+        }
     }
 
     private static String joinPaths(String[] paths) {

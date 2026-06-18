@@ -40,7 +40,7 @@ h3, .tab {
 }
 
 .label-sm, .config-debug__select-wrapper .config-debug__select-label, .subtitle-title__disclaimer, .config-option__range-label, .config-option-range__label, .config-option__radio-tabs .config-option__tab-label,
-.config-option__list .config-option__tab-label, .centered-page__controls > label {
+.config-option__list .config-option__tab-label, .config-option__list .config-option__action-label, .centered-page__controls > label {
   font-size: 20dp;
   letter-spacing: 2.8dp;
   line-height: 20dp;
@@ -103,21 +103,21 @@ body, .config-debug__select-wrapper select, .config-debug__select-wrapper input,
 */
 .nav-vert, .nav-dir, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   nav-up: auto;
   nav-down: auto;
 }
 
 .nav-horiz, .nav-dir, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   nav-right: auto;
   nav-left: auto;
 }
 
 .nav-foc, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   focus: auto;
   tab-index: auto;
 }
@@ -167,7 +167,7 @@ h3, .tab {
 }
 
 .label-sm, .config-debug__select-wrapper .config-debug__select-label, .subtitle-title__disclaimer, .config-option__range-label, .config-option-range__label, .config-option__radio-tabs .config-option__tab-label,
-.config-option__list .config-option__tab-label, .centered-page__controls > label {
+.config-option__list .config-option__tab-label, .config-option__list .config-option__action-label, .centered-page__controls > label {
   font-size: 20dp;
   letter-spacing: 2.8dp;
   line-height: 20dp;
@@ -950,6 +950,34 @@ scrollbarhorizontal sliderbar {
 .config-option__radio-tabs input.radio:disabled + .config-option__tab-label:hover,
 .config-option__list input.radio:disabled + .config-option__tab-label:hover {
   cursor: default;
+}
+.config-option__radio-tabs .config-option__action-label,
+.config-option__list .config-option__action-label {
+  transition: color 0.05s linear-in-out, background-color 0.05s linear-in-out, opacity 0.05s linear-in-out;
+  display: block;
+  width: auto;
+  height: auto;
+  margin: 4dp 12dp 0;
+  padding: 8dp 0;
+  border-width: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  tab-index: auto;
+}
+.config-option__radio-tabs .config-option__action-label:hover, .config-option__radio-tabs .config-option__action-label:focus,
+.config-option__list .config-option__action-label:hover,
+.config-option__list .config-option__action-label:focus {
+  color: #F2F2F2;
+  cursor: pointer;
+}
+.rmlui-window:not([mouse-active]) .config-option__radio-tabs .config-option__action-label:focus,
+.rmlui-window:not([mouse-active]) .config-option__list .config-option__action-label:focus {
+  transition: none;
+  animation: blue-pulse 0.75s infinite;
+  border-bottom: 1dp;
+  border-color: #17D6E8;
+  color: #17D6E8;
 }
 .config-option__radio-tabs input.range slidertrack,
 .config-option__list input.range slidertrack {
@@ -2223,32 +2251,13 @@ scrollbarhorizontal sliderbar {
   display: flex;
   position: absolute;
   bottom: 4dp;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
   justify-content: flex-start;
   width: 100%;
   max-width: 1692.4444444444dp;
   height: auto;
   margin: 0 4dp;
-}
-
-.launcher__safe-mode {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8dp;
-  margin-top: 4dp;
-  color: #F2F2F2;
-  opacity: 0.85;
-}
-
-.launcher__safe-mode:hover {
-  opacity: 1;
-}
-
-.launcher__safe-mode-checkbox {
-  width: 20dp;
-  height: 20dp;
 }
 
 .prompt__overlay {

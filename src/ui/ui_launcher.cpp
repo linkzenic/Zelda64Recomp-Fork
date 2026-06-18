@@ -6,7 +6,6 @@
 #include "RmlUi/Core.h"
 #include "nfd.h"
 #include <cstdlib>
-#include <fstream>
 #include <filesystem>
 
 static std::string version_string;
@@ -26,32 +25,10 @@ static bool android_safe_mode_from_env() {
 #endif
 }
 
-static std::filesystem::path android_safe_mode_flag_path() {
-    const char* app_folder_path = std::getenv("APP_FOLDER_PATH");
-    if (app_folder_path == nullptr || app_folder_path[0] == '\0') {
-        return {};
-    }
-
-    return std::filesystem::path{ app_folder_path } / "Zelda64Recompiled_safe_mode.flag";
-}
-
 static void set_android_safe_mode(bool enabled) {
     safe_mode_enabled = enabled;
 #if defined(__ANDROID__)
     setenv("APP_SAFE_MODE", enabled ? "1" : "0", 1);
-
-    const std::filesystem::path flag_path = android_safe_mode_flag_path();
-    if (!flag_path.empty()) {
-        std::error_code ec;
-        if (enabled) {
-            std::filesystem::create_directories(flag_path.parent_path(), ec);
-            std::ofstream flag_file{ flag_path };
-            flag_file << "Safe mode enabled\n";
-        }
-        else {
-            std::filesystem::remove(flag_path, ec);
-        }
-    }
 #endif
     if (model_handle) {
         model_handle.DirtyVariable("safe_mode_enabled");
@@ -128,9 +105,11 @@ public:
                 recompui::hide_all_contexts();
             }
         );
-        recompui::register_event(listener, "toggle_safe_mode",
+        recompui::register_event(listener, "start_safe_mode",
             [](const std::string& param, Rml::Event& event) {
-                set_android_safe_mode(!safe_mode_enabled);
+                set_android_safe_mode(true);
+                recomp::start_game(supported_games[0].game_id);
+                recompui::hide_all_contexts();
             }
         );
         recompui::register_event(listener, "open_controls",

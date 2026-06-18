@@ -43,9 +43,9 @@
 							<div class="menu-list-item__bullet">•</div>
 							<div class="menu-list-item__label">Start game</div>
 						</button>
-						<button onclick="open_controls" class="menu-list-item menu-list-item--right">
+						<button data-if="mm_rom_valid" onclick="start_safe_mode" class="menu-list-item menu-list-item--right">
 							<div class="menu-list-item__bullet">•</div>
-							<div class="menu-list-item__label">Setup controls</div>
+							<div class="menu-list-item__label">Safe mode</div>
 						</button>
 						<button onclick="open_settings" class="menu-list-item menu-list-item--right">
 							<div class="menu-list-item__bullet">•</div>
@@ -63,10 +63,6 @@
 				</div>
 				<div class="bottom-left">
 					<label>v{{version_number}}</label>
-					<label class="launcher__safe-mode">
-						<input class="checkbox launcher__safe-mode-checkbox" type="checkbox" data-checked="safe_mode_enabled" onclick="toggle_safe_mode"/>
-						<span>Safe mode</span>
-					</label>
 				</div>
 			</div>
 		</div>

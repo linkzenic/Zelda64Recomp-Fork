@@ -12,6 +12,9 @@
 
 #include "core/ui_context.h"
 
+#include <cstdlib>
+#include <string>
+
 ultramodern::renderer::GraphicsConfig new_options;
 Rml::DataModelHandle nav_help_model_handle;
 Rml::DataModelHandle general_model_handle;
@@ -620,6 +623,31 @@ public:
         static bool is_android = false;
 #endif
         constructor.Bind("is_android", &is_android);
+
+        static std::string android_active_vulkan_driver = [] {
+#if defined(__ANDROID__)
+            const char* custom_driver_display_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_DISPLAY_NAME");
+            if (custom_driver_display_name != nullptr && custom_driver_display_name[0] != '\0') {
+                return std::string{ custom_driver_display_name };
+            }
+            const char* custom_driver_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_NAME");
+            if (custom_driver_name != nullptr && custom_driver_name[0] != '\0') {
+                return std::string{ custom_driver_name };
+            }
+#endif
+            return std::string{ "System" };
+        }();
+        constructor.Bind("android_active_vulkan_driver", &android_active_vulkan_driver);
+
+        constructor.BindEventCallback("select_gpu_driver",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::open_driver_file_dialog();
+            });
+
+        constructor.BindEventCallback("use_system_gpu_driver",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::clear_custom_driver();
+            });
 
         constructor.BindFunc("res_option",
             [](Rml::Variant& out) { get_option(new_options.res_option, out); },

@@ -15,7 +15,7 @@
                                 data-checked="res_option"
                                 value="Original"
                                 id="res_240"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_240">240p</label>
                             <input type="radio"
@@ -25,7 +25,7 @@
                                 data-checked="res_option"
                                 value="Original2x"
                                 id="res_480"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_480">480p</label>
                             <input type="radio"
@@ -35,7 +35,7 @@
                                 data-checked="res_option"
                                 value="720p"
                                 id="res_720"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_720">720p</label>
                             <input type="radio"
@@ -45,7 +45,7 @@
                                 data-checked="res_option"
                                 value="1080p"
                                 id="res_1080"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_system"
                             />
                             <label class="config-option__tab-label" for="res_1080">1080p</label>
                             <input type="radio"
@@ -55,9 +55,35 @@
                                 data-checked="res_option"
                                 value="Auto"
                                 id="res_auto_android"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_system"
                             />
                             <label class="config-option__tab-label" for="res_auto_android">Auto</label>
+                        </div>
+                    </div>
+
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(1)">
+                        <label class="config-option__title">Custom Driver</label>
+                        <div class="config-option__list">
+                            <button
+                                id="custom_driver_select"
+                                class="config-option__action-label"
+                                data-event-click="select_gpu_driver"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                style="nav-up:#res_720; nav-down:#ar_original"
+                            >
+                                <div class="button__label">Select driver</div>
+                            </button>
+                            <button
+                                id="custom_driver_system"
+                                class="config-option__action-label"
+                                data-event-click="use_system_gpu_driver"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                style="nav-up:#res_1080; nav-down:#ar_expand"
+                            >
+                                <div class="button__label">System driver</div>
+                            </button>
                         </div>
                     </div>
 
@@ -151,7 +177,7 @@
                                 value="Original"
                                 id="ar_original"
                                 style="nav-up: #ds_windowed; nav-down: #wm_windowed"
-                                data-attr-style="is_android ? 'nav-up:#res_240; nav-down: #wm_windowed' : (res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed')"
+                                data-attr-style="is_android ? 'nav-up:#custom_driver_select; nav-down: #wm_windowed' : (res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed')"
                             />
                             <label class="config-option__tab-label" for="ar_original">Original</label>
                             <input type="radio"
@@ -162,7 +188,7 @@
                                 value="Expand"
                                 id="ar_expand"
                                 style="nav-up: #ds_2x; nav-down: #wm_fullscreen"
-                                data-attr-style="is_android ? 'nav-up:#res_1080; nav-down: #wm_fullscreen' : (res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen')"
+                                data-attr-style="is_android ? 'nav-up:#custom_driver_system; nav-down: #wm_fullscreen' : (res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen')"
                             />
                             <label class="config-option__tab-label" for="ar_expand">Expand</label>
                         </div>
@@ -336,6 +362,12 @@
                         <br />
                         <br />
                         Note: <b>4x</b> downsampling quality at <b>Original 2x</b> resolution may cause performance issues on low end devices, as it will cause the game to render <i>at almost 4k internal resolution</i>.
+                    </p>
+                    <p data-if="cur_config_index == 1 && is_android">
+                        Selects a custom Vulkan driver package from device storage, or switches back to the system Vulkan driver. Requires restart.
+                        <br />
+                        <br />
+                        <span style="color: #B97DF2;">Current driver: {{android_active_vulkan_driver}}</span>
                     </p>
                     <p data-if="cur_config_index == 2">
                         Sets the horizontal aspect ratio. <b>Original</b> uses the game's original 4:3 aspect ratio. <b>Expand</b> will adjust to match the game window's aspect ratio.
