@@ -147,7 +147,7 @@ def registerAdrenoToolsHookCopyTask = { String variantName, String cmakeVariantN
     String capitalizedVariantName = variantName.capitalize()
     String copyTaskName = "copy${capitalizedVariantName}AdrenoToolsHookJniLibs"
     tasks.register(copyTaskName, Copy) {
-        dependsOn tasks.named("buildCMake${capitalizedVariantName}[arm64-v8a][main]")
+        dependsOn tasks.named("buildCMake${cmakeVariantName}[arm64-v8a][main]")
         doFirst {
             delete fileTree(new File(generatedJniLibsDir, 'arm64-v8a')) {
                 include '**/libhook_impl.so'
