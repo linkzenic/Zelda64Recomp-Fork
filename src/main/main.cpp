@@ -78,6 +78,11 @@
 const std::string version_string = "1.2.2";
 
 #if defined(__ANDROID__)
+static bool android_safe_mode_enabled() {
+    const char* safe_mode = std::getenv("APP_SAFE_MODE");
+    return safe_mode != nullptr && safe_mode[0] == '1';
+}
+
 static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pending_mod_paths) {
     std::list<std::filesystem::path> paths;
     if (pending_mod_paths == nullptr || pending_mod_paths[0] == '\0') {
@@ -101,6 +106,12 @@ static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pend
 }
 
 static void install_pending_android_mods() {
+    if (android_safe_mode_enabled()) {
+        ZELDA_ANDROID_LOG("safe mode active; pending mod installation skipped");
+        SDL_setenv("APP_PENDING_MOD_PATHS", "", true);
+        return;
+    }
+
     const char* pending_mod_paths = std::getenv("APP_PENDING_MOD_PATHS");
     std::list<std::filesystem::path> paths = parse_pending_mod_paths(pending_mod_paths);
     if (paths.empty()) {
@@ -775,7 +786,15 @@ int main(int argc, char** argv) {
 #endif
 
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
-    recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
+#if defined(__ANDROID__)
+    if (android_safe_mode_enabled()) {
+        ZELDA_ANDROID_LOG("safe mode active; optional embedded mods skipped");
+    }
+    else
+#endif
+    {
+        recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
+    }
     ZELDA_ANDROID_STAGE("registered embedded mods");
 
     REGISTER_FUNC(recomp_get_window_resolution);

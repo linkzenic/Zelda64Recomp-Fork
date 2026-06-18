@@ -2223,13 +2223,32 @@ scrollbarhorizontal sliderbar {
   display: flex;
   position: absolute;
   bottom: 4dp;
-  flex-direction: row;
+  flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
   width: 100%;
   max-width: 1692.4444444444dp;
   height: auto;
   margin: 0 4dp;
+}
+
+.launcher__safe-mode {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8dp;
+  margin-top: 4dp;
+  color: #F2F2F2;
+  opacity: 0.85;
+}
+
+.launcher__safe-mode:hover {
+  opacity: 1;
+}
+
+.launcher__safe-mode-checkbox {
+  width: 20dp;
+  height: 20dp;
 }
 
 .prompt__overlay {

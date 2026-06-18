@@ -22,6 +22,7 @@ constexpr const char* kLogTag = "ZeldaNative";
 
 char log_path[512] = "/sdcard/Zelda64/Zelda64Recompiled.log";
 char crash_path[512] = "/sdcard/Zelda64/Zelda64Recompiled_crash.txt";
+char auto_safe_mode_path[512] = "/sdcard/Zelda64/Zelda64Recompiled_auto_safe_mode.flag";
 char crash_stage[128] = "native startup";
 bool crash_handlers_installed = false;
 
@@ -124,7 +125,34 @@ void write_backtrace(int fd) {
     }
 }
 
+void update_auto_safe_mode_path() {
+    copy_path(auto_safe_mode_path, sizeof(auto_safe_mode_path), crash_path);
+    char* slash = std::strrchr(auto_safe_mode_path, '/');
+    if (slash == nullptr) {
+        copy_path(auto_safe_mode_path, sizeof(auto_safe_mode_path), "/sdcard/Zelda64/Zelda64Recompiled_auto_safe_mode.flag");
+        return;
+    }
+
+    std::snprintf(slash + 1,
+        sizeof(auto_safe_mode_path) - static_cast<size_t>((slash + 1) - auto_safe_mode_path),
+        "%s",
+        "Zelda64Recompiled_auto_safe_mode.flag");
+}
+
+void write_auto_safe_mode_marker() {
+    int fd = open(auto_safe_mode_path, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (fd < 0) {
+        __android_log_print(ANDROID_LOG_WARN, kLogTag, "Unable to write safe mode marker: %s", auto_safe_mode_path);
+        return;
+    }
+
+    write_all(fd, "Safe mode will be enabled after this crash.\n");
+    close(fd);
+}
+
 void write_crash_report(const char* message, siginfo_t* info) {
+    write_auto_safe_mode_marker();
+
     int fd = open(crash_path, O_CREAT | O_WRONLY | O_TRUNC, 0666);
     if (fd < 0) {
         __android_log_print(ANDROID_LOG_WARN, kLogTag, "Unable to write crash file: %s", crash_path);
@@ -255,6 +283,7 @@ extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64rec
 
     copy_path(log_path, sizeof(log_path), log_path_chars);
     copy_path(crash_path, sizeof(crash_path), crash_path_chars);
+    update_auto_safe_mode_path();
 
     if (log_path_chars != nullptr) {
         env->ReleaseStringUTFChars(java_log_path, log_path_chars);

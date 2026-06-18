@@ -63,6 +63,10 @@
 				</div>
 				<div class="bottom-left">
 					<label>v{{version_number}}</label>
+					<label class="launcher__safe-mode">
+						<input class="checkbox launcher__safe-mode-checkbox" type="checkbox" data-checked="safe_mode_enabled" onclick="toggle_safe_mode"/>
+						<span>Safe mode</span>
+					</label>
 				</div>
 			</div>
 		</div>

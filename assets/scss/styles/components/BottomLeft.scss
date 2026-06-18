@@ -4,11 +4,30 @@
     display: flex;
     position: absolute;
     bottom: space(4);
-    flex-direction: row;
+    flex-direction: column;
     align-items: flex-start;
     justify-content: flex-start;
     width: 100%;
     max-width: space($base-modal-max-width);
     height: auto;
     margin: 0 space(4);
+}
+
+.launcher__safe-mode {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: space(8);
+    margin-top: space(4);
+    color: $color-text;
+    opacity: 0.85;
+}
+
+.launcher__safe-mode:hover {
+    opacity: 1;
+}
+
+.launcher__safe-mode-checkbox {
+    width: space(20);
+    height: space(20);
 }

@@ -74,6 +74,8 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v2";
     private static final String LOG_FILE_NAME = "Zelda64Recompiled.log";
     private static final String CRASH_FILE_NAME = "Zelda64Recompiled_crash.txt";
+    private static final String SAFE_MODE_FILE_NAME = "Zelda64Recompiled_safe_mode.flag";
+    private static final String AUTO_SAFE_MODE_FILE_NAME = "Zelda64Recompiled_auto_safe_mode.flag";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -120,6 +122,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private boolean motionSensorsRegistered;
     private File logFile;
     private File crashFile;
+    private File safeModeFile;
+    private File autoSafeModeFile;
+    private boolean safeModeEnabled;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int touchControllerAttachRetries;
     private int rightStickPointerId = MotionEvent.INVALID_POINTER_ID;
@@ -139,6 +144,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         appDataDir = resolveAppDataDir();
         prepareAppDataDir(appDataDir);
         setupPersistentLogs();
+        configureSafeModeState();
         setupMotionSensors();
         nativeModLibDir = new File(getCodeCacheDir(), "native_mods");
         if (!programDir.exists() && !programDir.mkdirs()) {
@@ -183,14 +189,17 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         nativeSetenv("APP_FOLDER_PATH", appDataDir.getAbsolutePath());
         nativeSetenv("APP_NATIVE_LIBS_PATH", nativeModLibDir.getAbsolutePath());
         nativeSetenv("APP_ANDROID_VERSION_NAME", getAndroidVersionName());
+        nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
         Log.i(TAG, "APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         Log.i(TAG, "APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         Log.i(TAG, "APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
         Log.i(TAG, "APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
+        Log.i(TAG, "APP_SAFE_MODE=" + safeModeEnabled);
         appendLog("APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         appendLog("APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         appendLog("APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
         appendLog("APP_ANDROID_VERSION_NAME=" + getAndroidVersionName());
+        appendLog("APP_SAFE_MODE=" + safeModeEnabled);
 
         if (!usingPublicDataDir) {
             requestPublicStorageAccess();
@@ -752,11 +761,32 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private void setupPersistentLogs() {
         logFile = new File(appDataDir, LOG_FILE_NAME);
         crashFile = new File(appDataDir, CRASH_FILE_NAME);
+        safeModeFile = new File(appDataDir, SAFE_MODE_FILE_NAME);
+        autoSafeModeFile = new File(appDataDir, AUTO_SAFE_MODE_FILE_NAME);
         appendLog("");
         appendLog("==== Zelda64 Recompiled Android startup ====");
         appendLog("Device=" + Build.MANUFACTURER + " " + Build.MODEL
                 + " SDK=" + Build.VERSION.SDK_INT
                 + " ABI=" + Build.SUPPORTED_ABIS[0]);
+    }
+
+    private void configureSafeModeState() {
+        boolean autoSafeMode = autoSafeModeFile != null && autoSafeModeFile.exists();
+        if (autoSafeMode) {
+            appendLog("Auto safe mode marker found from previous crash");
+        }
+
+        safeModeEnabled = (safeModeFile != null && safeModeFile.exists()) || autoSafeMode;
+        if (safeModeEnabled) {
+            writeFlagFile(safeModeFile, "Safe mode enabled\n");
+        }
+        if (autoSafeModeFile != null && autoSafeModeFile.exists() && !autoSafeModeFile.delete()) {
+            appendLog("Failed to clear auto safe mode marker");
+        }
+
+        if (safeModeEnabled) {
+            appendLog("Safe mode enabled; external mods will be skipped");
+        }
     }
 
     private void installJavaCrashHandler() {
@@ -819,6 +849,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
 
     private void writeJavaCrash(String message, Throwable throwable) {
         appendLog(message, throwable);
+        writeFlagFile(autoSafeModeFile, "Safe mode will be enabled after this crash.\n");
         File targetCrashFile = crashFile != null ? crashFile : new File(getFilesDir(), CRASH_FILE_NAME);
         File parent = targetCrashFile.getParentFile();
         if (parent != null && !parent.exists()) {
@@ -836,6 +867,23 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             throwable.printStackTrace(writer);
         } catch (IOException e) {
             Log.w(TAG, "Failed to write crash file", e);
+        }
+    }
+
+    private void writeFlagFile(File targetFile, String contents) {
+        if (targetFile == null) {
+            return;
+        }
+
+        File parent = targetFile.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+
+        try (FileWriter writer = new FileWriter(targetFile, false)) {
+            writer.write(contents);
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to write flag file: " + targetFile, e);
         }
     }
 
