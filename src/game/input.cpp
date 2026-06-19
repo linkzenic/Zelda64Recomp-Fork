@@ -17,7 +17,8 @@ struct ControllerState {
     std::array<float, 3> latest_accelerometer;
     GamepadMotion motion;
     uint32_t prev_gyro_timestamp;
-    ControllerState() : controller{}, latest_accelerometer{}, motion{}, prev_gyro_timestamp{} {
+    bool rumble_failed;
+    ControllerState() : controller{}, latest_accelerometer{}, motion{}, prev_gyro_timestamp{}, rumble_failed{} {
         motion.Reset();
         motion.SetCalibrationMode(GamepadMotionHelpers::CalibrationMode::Stillness | GamepadMotionHelpers::CalibrationMode::SensorFusion);
     };
@@ -574,7 +575,24 @@ void recomp::update_rumble() {
     {
         std::lock_guard lock{ InputState.cur_controllers_mutex };
         for (const auto& controller : InputState.cur_controllers) {
-            SDL_GameControllerRumble(controller, 0, rumble_strength, duration);
+            if (controller == nullptr) {
+                continue;
+            }
+
+            SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+            if (joystick == nullptr) {
+                continue;
+            }
+
+            SDL_JoystickID joystick_id = SDL_JoystickInstanceID(joystick);
+            auto state_it = InputState.controller_states.find(joystick_id);
+            if (state_it == InputState.controller_states.end() || state_it->second.rumble_failed) {
+                continue;
+            }
+
+            if (SDL_JoystickRumble(joystick, 0, rumble_strength, duration) != 0) {
+                state_it->second.rumble_failed = true;
+            }
         }
     }
 }
