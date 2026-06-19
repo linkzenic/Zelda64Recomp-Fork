@@ -20,11 +20,14 @@ jobject getActivity(JNIEnv* env) {
 }
 }
 
+extern "C" void plume_set_android_surface_ready(int ready);
+
 extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeSetAndroidSurfaceReady(
     JNIEnv*,
     jclass,
     jboolean ready) {
     __android_log_print(ANDROID_LOG_VERBOSE, kLogTag, "surface ready=%d", ready ? 1 : 0);
+    plume_set_android_surface_ready(ready == JNI_TRUE ? 1 : 0);
 }
 
 extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeSetAppAudioActive(
