@@ -2,6 +2,7 @@
 #include "transform_ids.h"
 #include "buffers.h"
 #include "sys_cfb.h"
+#include "input.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
 
 // This moves elements towards the screen edges when increased
@@ -20,6 +21,13 @@ typedef struct {
 } BiggerGfxPool;
 
 BiggerGfxPool gBiggerGfxPools[2];
+
+static u32 sGraphDiagUpdateCount = 0;
+static u32 sGraphDiagExecuteCount = 0;
+
+static s32 GraphDiag_ShouldLog(u32 count) {
+    return recomp_android_should_disable_rumble() && (count < 16);
+}
 
 // @recomp Use the bigger gfx pools and enable RT64 extended GBI mode.
 RECOMP_PATCH void Graph_SetNextGfxPool(GraphicsContext* gfxCtx) {
@@ -63,6 +71,51 @@ RECOMP_PATCH void Graph_SetNextGfxPool(GraphicsContext* gfxCtx) {
     CLOSE_DISPS(gfxCtx);
 }
 
+RECOMP_PATCH void GameState_Update(GameState* gameState) {
+    GraphicsContext* gfxCtx = gameState->gfxCtx;
+    u32 diagCount = sGraphDiagUpdateCount++;
+    s32 logDiag = GraphDiag_ShouldLog(diagCount);
+
+    if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update begin #%u state=%08X gfx=%08X main=%08X destroy=%08X init=%08X running=%u frames=%u divisor=%u\n",
+                      diagCount, (u32)gameState, (u32)gfxCtx, (u32)gameState->main, (u32)gameState->destroy,
+                      (u32)gameState->init, gameState->running, gameState->frames,
+                      gameState->framerateDivisor);
+    }
+
+    if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update set framebuffer #%u\n", diagCount);
+    }
+    GameState_SetFrameBuffer(gfxCtx);
+
+    if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update call main #%u main=%08X\n", diagCount, (u32)gameState->main);
+    }
+    gameState->main(gameState);
+
+    if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update main returned #%u pauseBg=%d\n", diagCount, R_PAUSE_BG_PRERENDER_STATE);
+    }
+
+    if (R_PAUSE_BG_PRERENDER_STATE != PAUSE_BG_PRERENDER_PROCESS) {
+        if (logDiag) {
+            recomp_printf("[GraphDiag] GameState_Update draw begin #%u\n", diagCount);
+        }
+        GameState_Draw(gameState, gfxCtx);
+
+        if (logDiag) {
+            recomp_printf("[GraphDiag] GameState_Update draw end begin #%u\n", diagCount);
+        }
+        GameState_DrawEnd(gfxCtx);
+    } else if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update draw skipped #%u\n", diagCount);
+    }
+
+    if (logDiag) {
+        recomp_printf("[GraphDiag] GameState_Update end #%u\n", diagCount);
+    }
+}
+
 void recomp_crash(const char* err) {
     recomp_printf("%s\n", err);
     // TODO open a message box instead of a hard crash
@@ -88,11 +141,27 @@ extern int extra_vis;
  */
 RECOMP_PATCH void Graph_ExecuteAndDraw(GraphicsContext* gfxCtx, GameState* gameState) {
     u32 problem;
+    u32 diagCount = sGraphDiagExecuteCount++;
+    s32 logDiag = GraphDiag_ShouldLog(diagCount);
 
     gameState->unk_A3 = 0;
+    if (logDiag) {
+        recomp_printf("[GraphDiag] Graph_ExecuteAndDraw begin #%u gfx=%08X state=%08X poolIdx=%d frame=%u main=%08X destroy=%08X\n",
+                      diagCount, (u32)gfxCtx, (u32)gameState, gfxCtx->gfxPoolIdx, gameState->frames,
+                      (u32)gameState->main, (u32)gameState->destroy);
+    }
+
     Graph_SetNextGfxPool(gfxCtx);
+    if (logDiag) {
+        recomp_printf("[GraphDiag] Graph_ExecuteAndDraw pool ready #%u master=%08X opa=%08X xlu=%08X overlay=%08X work=%08X debug=%08X\n",
+                      diagCount, (u32)gGfxMasterDL, (u32)gfxCtx->polyOpaBuffer, (u32)gfxCtx->polyXluBuffer,
+                      (u32)gfxCtx->overlayBuffer, (u32)gfxCtx->workBuffer, (u32)gfxCtx->debugBuffer);
+    }
 
     GameState_Update(gameState);
+    if (logDiag) {
+        recomp_printf("[GraphDiag] Graph_ExecuteAndDraw update returned #%u frame=%u\n", diagCount, gameState->frames);
+    }
 
     OPEN_DISPS(gfxCtx);
     
