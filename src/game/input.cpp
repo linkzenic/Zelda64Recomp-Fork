@@ -1,5 +1,8 @@
 #include <atomic>
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <string>
 
 #include "ultramodern/ultramodern.hpp"
 #include "recomp.h"
@@ -46,6 +49,27 @@ static struct {
 static struct {
     std::list<std::filesystem::path> files_dropped;
 } DropState;
+
+static bool android_manufacturer_is_samsung() {
+#if defined(__ANDROID__)
+    const char* manufacturer = std::getenv("APP_ANDROID_MANUFACTURER");
+    if (manufacturer == nullptr) {
+        return false;
+    }
+
+    std::string value{ manufacturer };
+    for (char& c : value) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return value == "samsung";
+#else
+    return false;
+#endif
+}
+
+bool recomp::android_should_disable_rumble() {
+    return android_manufacturer_is_samsung();
+}
 
 std::atomic<recomp::InputDevice> scanning_device = recomp::InputDevice::COUNT;
 std::atomic<recomp::InputField> scanned_input;
@@ -532,6 +556,12 @@ void recomp::poll_inputs() {
 }
 
 void recomp::set_rumble(int controller_num, bool on) {
+    if (recomp::android_should_disable_rumble()) {
+        InputState.rumble_active = false;
+        InputState.cur_rumble = 0.0f;
+        return;
+    }
+
     if (controller_num == 0) {
         InputState.rumble_active = on;
     }
@@ -542,7 +572,9 @@ ultramodern::input::connected_device_info_t recomp::get_connected_device_info(in
         case 0:
             return ultramodern::input::connected_device_info_t {
                 .connected_device = ultramodern::input::Device::Controller,
-                .connected_pak = ultramodern::input::Pak::RumblePak,
+                .connected_pak = recomp::android_should_disable_rumble()
+                    ? ultramodern::input::Pak::None
+                    : ultramodern::input::Pak::RumblePak,
             };
     }
 

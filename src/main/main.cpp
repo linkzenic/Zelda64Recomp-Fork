@@ -458,6 +458,7 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 }
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
+extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
 
 // array of supported GameEntry objects
@@ -819,6 +820,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_mouse_deltas);
     REGISTER_FUNC(recomp_get_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
+    REGISTER_FUNC(recomp_android_should_disable_rumble);
     recompui::register_ui_exports();
     recomputil::register_data_api_exports();
     ZELDA_ANDROID_STAGE("registered exports");

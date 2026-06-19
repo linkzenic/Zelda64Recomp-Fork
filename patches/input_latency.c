@@ -8,6 +8,7 @@
 #include "z64viscvg.h"
 #include "z64vismono.h"
 #include "z64viszbuf.h"
+#include "z64rumble.h"
 #include "input.h"
 
 void recomp_set_current_frame_poll_id();
@@ -18,6 +19,9 @@ void PadMgr_UpdateRumble(void);
 void PadMgr_UpdateConnections(void);
 void PadMgr_UpdateInputs(void);
 void PadMgr_InitVoice(void);
+void PadMgr_RumbleSet(u8 enable[MAXCONTROLLERS]);
+void PadMgr_SetRumbleRetraceCallback(void (*callback)(void*), void* arg);
+s32 PadMgr_ControllerHasRumblePak(s32 port);
 OSMesgQueue* PadMgr_AcquireSerialEventQueue(void);
 void PadMgr_ReleaseSerialEventQueue(OSMesgQueue* serialEventQueue);
 
@@ -33,6 +37,31 @@ typedef enum {
     /* 1 */ VOICE_INIT_TRY,    // try to initialize voice
     /* 2 */ VOICE_INIT_SUCCESS // voice initialized
 } VoiceInitStatus;
+
+RECOMP_PATCH void Rumble_Update(void* arg0) {
+    if (recomp_android_should_disable_rumble()) {
+        return;
+    }
+
+    RumbleManager_Update(&gRumbleMgr);
+    PadMgr_RumbleSet(gRumbleMgr.rumbleEnabled);
+}
+
+RECOMP_PATCH void Rumble_Init(void) {
+    RumbleManager_Init(&gRumbleMgr);
+
+    if (!recomp_android_should_disable_rumble()) {
+        PadMgr_SetRumbleRetraceCallback(Rumble_Update, NULL);
+    }
+}
+
+RECOMP_PATCH s32 Rumble_ControllerOneHasRumblePak(void) {
+    if (recomp_android_should_disable_rumble()) {
+        return 0;
+    }
+
+    return PadMgr_ControllerHasRumblePak(0);
+}
 
 RECOMP_PATCH void PadMgr_HandleRetrace(void) {
     // Execute rumble callback

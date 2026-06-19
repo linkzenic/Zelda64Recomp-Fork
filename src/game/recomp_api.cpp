@@ -146,6 +146,10 @@ extern "C" void recomp_get_analog_cam_enabled(uint8_t* rdram, recomp_context* ct
     _return<s32>(ctx, zelda64::get_analog_cam_mode() == zelda64::AnalogCamMode::On);
 }
 
+extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, recomp::android_should_disable_rumble());
+}
+
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
     float* x_out = _arg<0, float*>(rdram, ctx);
     float* y_out = _arg<1, float*>(rdram, ctx);
