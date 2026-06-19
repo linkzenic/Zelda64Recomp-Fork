@@ -149,17 +149,17 @@ jobs:
           fi
           sdkmanager \
             "platform-tools" \
-            "platforms;android-35" \
+            "platforms;android-36" \
             "build-tools;35.0.0" \
             "cmake;3.30.3" \
-            "ndk;26.0.10792818"
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.0.10792818" >> "$GITHUB_ENV"
+            "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
       - name: Cache Android native dependency prefixes
         uses: actions/cache@v4
         with:
           path: .android-prefixes
-          key: android-prefixes-${{ runner.os }}-sdl2-2.32.10-freetype-2.13.3-ndk-26.0.10792818
+          key: android-prefixes-${{ runner.os }}-sdl2-2.32.10-freetype-2.13.3-ndk-28.2.13676358
 
       - name: Prepare Android dependencies
         run: tools/ci/setup_android_deps.sh

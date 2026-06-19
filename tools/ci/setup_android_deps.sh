@@ -9,7 +9,7 @@ PREFIX_ROOT="${ANDROID_PREFIX_ROOT:-$HOME/Android/prefixes}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)}"
 
 : "${ANDROID_HOME:?ANDROID_HOME must point at the Android SDK}"
-: "${ANDROID_NDK_HOME:=${ANDROID_HOME}/ndk/26.0.10792818}"
+: "${ANDROID_NDK_HOME:=${ANDROID_HOME}/ndk/28.2.13676358}"
 
 case "$ANDROID_ABI" in
   arm64-v8a) PREFIX_ABI="android-arm64" ;;

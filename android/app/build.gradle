@@ -4,7 +4,7 @@ plugins {
 
 final String homeDir = System.getenv('HOME') ?: System.getProperty('user.home')
 final String androidSdk = System.getenv('ANDROID_HOME') ?: "${homeDir}/Library/Android/sdk"
-final String androidNdk = System.getenv('ANDROID_NDK_HOME') ?: "${androidSdk}/ndk/26.0.10792818"
+final String androidNdk = System.getenv('ANDROID_NDK_HOME') ?: "${androidSdk}/ndk/28.2.13676358"
 final String sdl2Prefix = System.getenv('ZELDA_ANDROID_SDL2_PREFIX') ?: "${homeDir}/Android/prefixes/SDL2-2.32.10-android-arm64"
 final String freetypePrefix = System.getenv('ZELDA_ANDROID_FREETYPE_PREFIX') ?: "${homeDir}/Android/prefixes/freetype-2.13.3-android-arm64"
 final String hostFileToC = System.getenv('ZELDA_ANDROID_FILE_TO_C') ?: "${System.getenv('TMPDIR') ?: '/tmp'}/zelda64-file-to-c"
@@ -24,14 +24,14 @@ final File generatedProgramAssetsDir = layout.buildDirectory.dir('generated/prog
 
 android {
     namespace 'io.github.zelda64recomp'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId zeldaApplicationId
         minSdk 24
-        targetSdk 35
-        versionCode 22
-        versionName zeldaProbe ? '0.2.2-android-sdl-probe' : '0.2.2'
+        targetSdk 36
+        versionCode 23
+        versionName zeldaProbe ? '0.2.3-android-sdl-probe' : '0.2.3'
 
         externalNativeBuild {
             cmake {
@@ -60,7 +60,7 @@ android {
         }
     }
 
-    ndkVersion '26.0.10792818'
+    ndkVersion '28.2.13676358'
 
     signingConfigs {
         if (hasAndroidReleaseSigning) {
@@ -117,7 +117,7 @@ tasks.register('validateAndroidBuildEnvironment') {
     description = 'Fail fast when the Android SDK/NDK or native dependency prefixes are missing.'
     doLast {
         requirePath(file(androidSdk), 'ANDROID_HOME does not point at an Android SDK')
-        requirePath(file(androidNdk), 'ANDROID_NDK_HOME does not point at the required Android NDK 26.0.10792818')
+        requirePath(file(androidNdk), 'ANDROID_NDK_HOME does not point at the required Android NDK 28.2.13676358')
         requirePath(new File(androidNdk, 'build/cmake/android.toolchain.cmake'), 'Android NDK toolchain file is missing')
         requirePath(new File(sdl2Prefix, 'lib/cmake/SDL2'), 'ZELDA_ANDROID_SDL2_PREFIX is missing SDL2 CMake config')
         requirePath(new File(sdl2Prefix, 'lib/libSDL2.so'), 'ZELDA_ANDROID_SDL2_PREFIX is missing libSDL2.so for packaging')

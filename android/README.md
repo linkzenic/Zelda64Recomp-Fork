@@ -63,7 +63,7 @@ gradle --no-daemon -p android :app:assembleDebug
 ## Required Inputs
 
 - `ANDROID_HOME`, defaulting to `$HOME/Library/Android/sdk`
-- `ANDROID_NDK_HOME`, defaulting to `$ANDROID_HOME/ndk/26.0.10792818`
+- `ANDROID_NDK_HOME`, defaulting to `$ANDROID_HOME/ndk/28.2.13676358`
 - `ZELDA_ANDROID_SDL2_PREFIX`, defaulting to `$HOME/Android/prefixes/SDL2-2.32.10-android-arm64`
 - `ZELDA_ANDROID_FREETYPE_PREFIX`, required for full runtime builds
 
