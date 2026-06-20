@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <cinttypes>
 #include <cstdlib>
+#include <cctype>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -81,6 +82,39 @@ const std::string version_string = "1.2.2";
 static bool android_safe_mode_enabled() {
     const char* safe_mode = std::getenv("APP_SAFE_MODE");
     return safe_mode != nullptr && safe_mode[0] == '1';
+}
+
+static bool android_string_equals_ci(const char* value, const char* expected) {
+    if (value == nullptr || expected == nullptr) {
+        return false;
+    }
+
+    while (*value != '\0' && *expected != '\0') {
+        unsigned char value_char = static_cast<unsigned char>(*value);
+        unsigned char expected_char = static_cast<unsigned char>(*expected);
+        if (std::tolower(value_char) != std::tolower(expected_char)) {
+            return false;
+        }
+        ++value;
+        ++expected;
+    }
+
+    return *value == '\0' && *expected == '\0';
+}
+
+static void android_configure_device_flags() {
+    const char* manufacturer = SDL_getenv("APP_ANDROID_MANUFACTURER");
+    if (manufacturer == nullptr) {
+        manufacturer = std::getenv("APP_ANDROID_MANUFACTURER");
+    }
+
+    const bool disable_rumble = android_string_equals_ci(manufacturer, "samsung");
+    recomp::set_android_disable_rumble(disable_rumble);
+    ZELDA_ANDROID_LOG("android device flags: manufacturer=%s disable_rumble=%d",
+        manufacturer != nullptr ? manufacturer : "<null>",
+        disable_rumble ? 1 : 0);
+    zelda64::android::append_log("APP_ANDROID_DISABLE_RUMBLE=%s",
+        disable_rumble ? "true" : "false");
 }
 
 static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pending_mod_paths) {
@@ -780,6 +814,9 @@ int main(int argc, char** argv) {
     recomp::register_config_path(zelda64::get_app_folder_path());
     ZELDA_ANDROID_STAGE("registered config path");
     ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
+#if defined(__ANDROID__)
+    android_configure_device_flags();
+#endif
 
     // Register supported games and patches
     for (const auto& game : supported_games) {

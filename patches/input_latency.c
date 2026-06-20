@@ -64,8 +64,10 @@ RECOMP_PATCH s32 Rumble_ControllerOneHasRumblePak(void) {
 }
 
 RECOMP_PATCH void PadMgr_HandleRetrace(void) {
+    s32 disableRumble = recomp_android_should_disable_rumble();
+
     // Execute rumble callback
-    if (sPadMgrInstance->rumbleRetraceCallback != NULL) {
+    if (!disableRumble && sPadMgrInstance->rumbleRetraceCallback != NULL) {
         sPadMgrInstance->rumbleRetraceCallback(sPadMgrInstance->rumbleRetraceArg);
     }
 
@@ -75,7 +77,9 @@ RECOMP_PATCH void PadMgr_HandleRetrace(void) {
     }
 
     // Rumble Pak
-    if (gFaultMgr.msgId != 0) {
+    if (disableRumble) {
+        PadMgr_RumbleStop();
+    } else if (gFaultMgr.msgId != 0) {
         // If fault is active, no rumble
         PadMgr_RumbleStop();
     } else if (sPadMgrInstance->rumbleOffTimer > 0) {

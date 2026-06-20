@@ -50,25 +50,14 @@ static struct {
     std::list<std::filesystem::path> files_dropped;
 } DropState;
 
-static bool android_manufacturer_is_samsung() {
-#if defined(__ANDROID__)
-    const char* manufacturer = std::getenv("APP_ANDROID_MANUFACTURER");
-    if (manufacturer == nullptr) {
-        return false;
-    }
-
-    std::string value{ manufacturer };
-    for (char& c : value) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return value == "samsung";
-#else
-    return false;
-#endif
-}
+static std::atomic_bool android_disable_rumble = false;
 
 bool recomp::android_should_disable_rumble() {
-    return android_manufacturer_is_samsung();
+    return android_disable_rumble.load(std::memory_order_relaxed);
+}
+
+void recomp::set_android_disable_rumble(bool disabled) {
+    android_disable_rumble.store(disabled, std::memory_order_relaxed);
 }
 
 std::atomic<recomp::InputDevice> scanning_device = recomp::InputDevice::COUNT;

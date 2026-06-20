@@ -198,6 +198,7 @@ namespace recomp {
     bool game_input_disabled();
     bool all_input_disabled();
     bool android_should_disable_rumble();
+    void set_android_disable_rumble(bool disabled);
 }
 
 #endif
