@@ -53,8 +53,18 @@ build_file_to_c() {
   c++ -std=c++17 -O2 "$source_path" -o "$FILE_TO_C"
 }
 
+refresh_patch_sources() {
+  build_recomp_tools
+  build_file_to_c
+
+  CC="${PATCHES_C_COMPILER:-clang}" LD="${PATCHES_LD:-ld.lld}" make -C patches
+  ./N64Recomp patches.toml
+  "$FILE_TO_C" patches/patches.bin mm_patches_bin RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
+}
+
 if have_runtime_sources; then
-  echo "Generated runtime sources are already present."
+  echo "Generated runtime sources are already present; refreshing patch artifacts."
+  refresh_patch_sources
   exit 0
 fi
 
@@ -85,9 +95,7 @@ build_file_to_c
 ./N64Recomp us.rev1.toml
 ./RSPRecomp aspMain.us.rev1.toml
 ./RSPRecomp njpgdspMain.us.rev1.toml
-CC="${PATCHES_C_COMPILER:-clang}" LD="${PATCHES_LD:-ld.lld}" make -C patches
-./N64Recomp patches.toml
-"$FILE_TO_C" patches/patches.bin mm_patches_bin RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
+refresh_patch_sources
 
 if ! have_runtime_sources; then
   echo "Runtime source generation completed, but required generated files are still missing." >&2
