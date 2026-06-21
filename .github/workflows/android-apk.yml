@@ -257,7 +257,9 @@ jobs:
           if [[ -z "$release_notes" ]]; then
             release_notes="Android"
           fi
-          asset_name="Zelda64-Recompiled-Android-${{ inputs.release_tag }}.apk"
+          asset_suffix="${{ inputs.release_tag }}"
+          asset_suffix="${asset_suffix#android-}"
+          asset_name="Zelda64-Recompiled-Android-${asset_suffix}.apk"
           cp "${{ steps.apk.outputs.path }}" "$asset_name"
           gh release create "${{ inputs.release_tag }}" "$asset_name" \
             --target "${{ github.sha }}" \

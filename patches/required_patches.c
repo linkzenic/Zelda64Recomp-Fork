@@ -13,9 +13,6 @@ RECOMP_DECLARE_EVENT(recomp_on_init());
 
 // @recomp Patched to load the code segment in the recomp runtime.
 RECOMP_PATCH void Main_Init(void) {
-    DmaRequest dmaReq;
-    OSMesgQueue mq;
-    OSMesg msg[1];
     size_t prevSize;
 
     // @recomp Register base actor extensions.
@@ -29,10 +26,6 @@ RECOMP_PATCH void Main_Init(void) {
     recomp_on_init();
     recomp_printf("[MainInitDiag] recomp_on_init end\n");
 
-    recomp_printf("[MainInitDiag] osCreateMesgQueue begin\n");
-    osCreateMesgQueue(&mq, msg, ARRAY_COUNT(msg));
-    recomp_printf("[MainInitDiag] osCreateMesgQueue end\n");
-
     prevSize = gDmaMgrDmaBuffSize;
     gDmaMgrDmaBuffSize = 0;
 
@@ -41,19 +34,18 @@ RECOMP_PATCH void Main_Init(void) {
     recomp_load_overlays(SEGMENT_ROM_START(code), SEGMENT_START(code), SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code));
     recomp_printf("[MainInitDiag] recomp_load_overlays end\n");
 
-    recomp_printf("[MainInitDiag] DmaMgr_SendRequestImpl begin\n");
-    DmaMgr_SendRequestImpl(&dmaReq, SEGMENT_START(code), SEGMENT_ROM_START(code),
-                           SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code), 0, &mq, NULL);
-    recomp_printf("[MainInitDiag] DmaMgr_SendRequestImpl end\n");
+    // @recomp Load this boot-time code DMA synchronously. The original overlaps
+    // the DMA with init work, but avoiding the message queue here is safer on Android.
+    recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam begin\n");
+    DmaMgr_DmaRomToRam(SEGMENT_ROM_START(code), SEGMENT_START(code),
+                       SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code));
+    recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam end\n");
     recomp_printf("[MainInitDiag] Main_InitScreen begin\n");
     Main_InitScreen();
     recomp_printf("[MainInitDiag] Main_InitScreen end\n");
     recomp_printf("[MainInitDiag] Main_InitMemory begin\n");
     Main_InitMemory();
     recomp_printf("[MainInitDiag] Main_InitMemory end\n");
-    recomp_printf("[MainInitDiag] osRecvMesg begin\n");
-    osRecvMesg(&mq, NULL, OS_MESG_BLOCK);
-    recomp_printf("[MainInitDiag] osRecvMesg end\n");
 
     gDmaMgrDmaBuffSize = prevSize;
 

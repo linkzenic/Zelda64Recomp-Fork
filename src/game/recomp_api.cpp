@@ -25,6 +25,7 @@ extern "C" void recomp_puts(uint8_t* rdram, recomp_context* ctx) {
     for (u32 i = 0; i < length; i++) {
         fputc(MEM_B(i, (gpr)cur_str), stdout);
     }
+    fflush(stdout);
 }
 
 extern "C" void recomp_exit(uint8_t* rdram, recomp_context* ctx) {
