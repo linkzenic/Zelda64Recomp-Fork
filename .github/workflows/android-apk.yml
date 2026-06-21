@@ -11,6 +11,21 @@ on:
         options:
           - release
           - debug
+      release_tag:
+        description: Optional release tag to publish
+        required: false
+        type: string
+      release_title:
+        description: Optional release title
+        required: false
+        type: string
+      release_notes:
+        description: Optional release notes
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -226,3 +241,25 @@ jobs:
           name: Zelda64-Recompiled-Android-${{ inputs.build_type }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+
+      - name: Publish release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_title="${{ inputs.release_title }}"
+          if [[ -z "$release_title" ]]; then
+            release_title="${{ inputs.release_tag }}"
+          fi
+          release_notes="${{ inputs.release_notes }}"
+          if [[ -z "$release_notes" ]]; then
+            release_notes="Android"
+          fi
+          asset_name="Zelda64-Recompiled-Android-${{ inputs.release_tag }}.apk"
+          cp "${{ steps.apk.outputs.path }}" "$asset_name"
+          gh release create "${{ inputs.release_tag }}" "$asset_name" \
+            --target "${{ github.sha }}" \
+            --title "$release_title" \
+            --notes "$release_notes"
