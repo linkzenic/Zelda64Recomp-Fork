@@ -30,8 +30,8 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 36
-        versionCode 28
-        versionName zeldaProbe ? '0.2.8-android-sdl-probe' : '0.2.8'
+        versionCode 29
+        versionName zeldaProbe ? '0.2.9-android-sdl-probe' : '0.2.9'
 
         externalNativeBuild {
             cmake {
