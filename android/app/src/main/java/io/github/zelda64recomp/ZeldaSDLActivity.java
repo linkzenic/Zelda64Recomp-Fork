@@ -847,14 +847,17 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     }
 
     private void configureSafeModeState() {
-        if (safeModeFile != null && safeModeFile.exists() && !safeModeFile.delete()) {
+        boolean requestedSafeMode = safeModeFile != null && safeModeFile.exists();
+        boolean requestedAutoSafeMode = autoSafeModeFile != null && autoSafeModeFile.exists();
+
+        if (requestedSafeMode && !safeModeFile.delete()) {
             appendLog("Failed to clear legacy safe mode marker");
         }
-        if (autoSafeModeFile != null && autoSafeModeFile.exists() && !autoSafeModeFile.delete()) {
+        if (requestedAutoSafeMode && !autoSafeModeFile.delete()) {
             appendLog("Failed to clear auto safe mode marker");
         }
 
-        safeModeEnabled = false;
+        safeModeEnabled = requestedSafeMode || requestedAutoSafeMode;
     }
 
     private void configureCustomDriverState() {
