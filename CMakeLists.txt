@@ -143,6 +143,13 @@ target_compile_options(PatchesLib PRIVATE
     -Wno-implicit-function-declaration
 )
 
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    # Samsung Android 16 devices can fault when entering generated recomp
+    # functions without a BTI landing pad. Scope this to generated code only.
+    target_compile_options(RecompiledFuncs PRIVATE -mbranch-protection=bti)
+    target_compile_options(PatchesLib PRIVATE -mbranch-protection=bti)
+endif()
+
 target_include_directories(PatchesLib PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/ultramodern/include
