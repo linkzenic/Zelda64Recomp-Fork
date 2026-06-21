@@ -1212,18 +1212,47 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         File seededMarker = new File(modsDir, BUNDLED_MODS_SEEDED_MARKER);
         removeObsoleteBundledMods(modsDir);
 
-        if (seededMarker.exists()) {
-            Log.i(TAG, "Bundled Android mods already seeded; skipping");
-            return;
-        }
-
         for (String filename : BUNDLED_ANDROID_MODS) {
             File outputFile = new File(modsDir, filename);
-            copyAssetFile(BUNDLED_MODS_ASSET_DIR + "/" + filename, outputFile);
+            String assetPath = BUNDLED_MODS_ASSET_DIR + "/" + filename;
+            if (!outputFile.exists() || !assetMatchesFile(assetPath, outputFile)) {
+                copyAssetFile(assetPath, outputFile);
+                Log.i(TAG, "Bundled Android mod updated: " + filename);
+                appendLog("Bundled Android mod updated: " + filename);
+            }
+            else {
+                Log.i(TAG, "Bundled Android mod current: " + filename);
+            }
         }
 
-        if (!seededMarker.createNewFile()) {
+        if (!seededMarker.exists() && !seededMarker.createNewFile()) {
             Log.w(TAG, "Failed to create bundled mods seeded marker: " + seededMarker);
+        }
+    }
+
+    private boolean assetMatchesFile(String assetPath, File file) {
+        try (InputStream assetInput = getAssets().open(assetPath);
+             InputStream fileInput = new java.io.FileInputStream(file)) {
+            byte[] assetBuffer = new byte[64 * 1024];
+            byte[] fileBuffer = new byte[64 * 1024];
+            while (true) {
+                int assetBytes = assetInput.read(assetBuffer);
+                int fileBytes = fileInput.read(fileBuffer);
+                if (assetBytes != fileBytes) {
+                    return false;
+                }
+                if (assetBytes == -1) {
+                    return true;
+                }
+                for (int i = 0; i < assetBytes; i++) {
+                    if (assetBuffer[i] != fileBuffer[i]) {
+                        return false;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to compare bundled Android mod asset " + assetPath + " with " + file, e);
+            return false;
         }
     }
 

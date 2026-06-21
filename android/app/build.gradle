@@ -21,6 +21,7 @@ final String androidKeyPassword = (project.findProperty('ANDROID_KEY_PASSWORD') 
 final boolean hasAndroidReleaseSigning = androidKeystorePath && androidKeystorePassword && androidKeyAlias && androidKeyPassword
 final File generatedJniLibsDir = layout.buildDirectory.dir('generated/jniLibs').get().asFile
 final File generatedProgramAssetsDir = layout.buildDirectory.dir('generated/programAssets').get().asFile
+final File bundledModsAssetsDir = file('src/main/assets/bundled_mods')
 
 android {
     namespace 'io.github.zelda64recomp'
@@ -181,8 +182,13 @@ afterEvaluate {
 }
 
 if (zeldaRuntimeApk) {
+    tasks.register('validateAndroidBundledNativeMods', Exec) {
+        commandLine 'python3', '../../tools/verify_android_native_mods.py', bundledModsAssetsDir.absolutePath
+    }
+
     tasks.register('copyProgramAssets', Copy) {
         dependsOn tasks.named('validateAndroidBuildEnvironment')
+        dependsOn tasks.named('validateAndroidBundledNativeMods')
         doFirst {
             delete generatedProgramAssetsDir
         }
@@ -192,7 +198,7 @@ if (zeldaRuntimeApk) {
         from('../../recompcontrollerdb.txt') {
             into('program')
         }
-        from('src/main/assets/bundled_mods') {
+        from(bundledModsAssetsDir) {
             into('bundled_mods')
         }
         into(generatedProgramAssetsDir)
