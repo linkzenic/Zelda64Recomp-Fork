@@ -3,6 +3,7 @@
 #include "transform_ids.h"
 #include "loadfragment.h"
 #include "libc/math.h"
+#include "input.h"
 
 void Main_ClearMemory(void* begin, void* end);
 void Main_InitMemory(void);
@@ -13,7 +14,11 @@ RECOMP_DECLARE_EVENT(recomp_on_init());
 
 // @recomp Patched to load the code segment in the recomp runtime.
 RECOMP_PATCH void Main_Init(void) {
+    DmaRequest dmaReq;
+    OSMesgQueue mq;
+    OSMesg msg[1];
     size_t prevSize;
+    s32 syncBootDma;
 
     // @recomp Register base actor extensions.
     recomp_printf("[MainInitDiag] begin\n");
@@ -26,6 +31,14 @@ RECOMP_PATCH void Main_Init(void) {
     recomp_on_init();
     recomp_printf("[MainInitDiag] recomp_on_init end\n");
 
+    syncBootDma = recomp_android_should_use_sync_boot_dma();
+
+    if (!syncBootDma) {
+        recomp_printf("[MainInitDiag] osCreateMesgQueue begin\n");
+        osCreateMesgQueue(&mq, msg, ARRAY_COUNT(msg));
+        recomp_printf("[MainInitDiag] osCreateMesgQueue end\n");
+    }
+
     prevSize = gDmaMgrDmaBuffSize;
     gDmaMgrDmaBuffSize = 0;
 
@@ -34,20 +47,31 @@ RECOMP_PATCH void Main_Init(void) {
     recomp_load_overlays(SEGMENT_ROM_START(code), SEGMENT_START(code), SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code));
     recomp_printf("[MainInitDiag] recomp_load_overlays end\n");
 
+    if (syncBootDma) {
+        // @recomp Samsung devices have shown problems with this boot-time DMA
+        // request going through the DMA manager queue. Keep that workaround
+        // scoped to Samsung so normal Android devices retain the original path.
+        recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam begin\n");
+        DmaMgr_DmaRomToRam(SEGMENT_ROM_START(code), SEGMENT_START(code),
+                           SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code));
+        recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam end\n");
+    } else {
+        recomp_printf("[MainInitDiag] DmaMgr_SendRequestImpl begin\n");
+        DmaMgr_SendRequestImpl(&dmaReq, SEGMENT_START(code), SEGMENT_ROM_START(code),
+                               SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code), 0, &mq, NULL);
+        recomp_printf("[MainInitDiag] DmaMgr_SendRequestImpl end\n");
+    }
     recomp_printf("[MainInitDiag] Main_InitScreen begin\n");
     Main_InitScreen();
     recomp_printf("[MainInitDiag] Main_InitScreen end\n");
     recomp_printf("[MainInitDiag] Main_InitMemory begin\n");
     Main_InitMemory();
     recomp_printf("[MainInitDiag] Main_InitMemory end\n");
-
-    // @recomp Load this boot-time code DMA synchronously at the same point the
-    // original async path waited for completion. This avoids the DMA manager
-    // message queue while preserving init-time memory ordering.
-    recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam begin\n");
-    DmaMgr_DmaRomToRam(SEGMENT_ROM_START(code), SEGMENT_START(code),
-                       SEGMENT_ROM_END(code) - SEGMENT_ROM_START(code));
-    recomp_printf("[MainInitDiag] DmaMgr_DmaRomToRam end\n");
+    if (!syncBootDma) {
+        recomp_printf("[MainInitDiag] osRecvMesg begin\n");
+        osRecvMesg(&mq, NULL, OS_MESG_BLOCK);
+        recomp_printf("[MainInitDiag] osRecvMesg end\n");
+    }
 
     gDmaMgrDmaBuffSize = prevSize;
 

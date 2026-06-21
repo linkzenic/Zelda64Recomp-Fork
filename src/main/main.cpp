@@ -108,13 +108,19 @@ static void android_configure_device_flags() {
         manufacturer = std::getenv("APP_ANDROID_MANUFACTURER");
     }
 
-    const bool disable_rumble = android_string_equals_ci(manufacturer, "samsung");
+    const bool is_samsung = android_string_equals_ci(manufacturer, "samsung");
+    const bool disable_rumble = is_samsung;
+    const bool sync_boot_dma = is_samsung;
     recomp::set_android_disable_rumble(disable_rumble);
-    ZELDA_ANDROID_LOG("android device flags: manufacturer=%s disable_rumble=%d",
+    recomp::set_android_sync_boot_dma(sync_boot_dma);
+    ZELDA_ANDROID_LOG("android device flags: manufacturer=%s disable_rumble=%d sync_boot_dma=%d",
         manufacturer != nullptr ? manufacturer : "<null>",
-        disable_rumble ? 1 : 0);
+        disable_rumble ? 1 : 0,
+        sync_boot_dma ? 1 : 0);
     zelda64::android::append_log("APP_ANDROID_DISABLE_RUMBLE=%s",
         disable_rumble ? "true" : "false");
+    zelda64::android::append_log("APP_ANDROID_SYNC_BOOT_DMA=%s",
+        sync_boot_dma ? "true" : "false");
 }
 
 static std::list<std::filesystem::path> parse_pending_mod_paths(const char* pending_mod_paths) {
@@ -493,6 +499,7 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
 
 // array of supported GameEntry objects
@@ -858,6 +865,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     REGISTER_FUNC(recomp_android_should_disable_rumble);
+    REGISTER_FUNC(recomp_android_should_use_sync_boot_dma);
     recompui::register_ui_exports();
     recomputil::register_data_api_exports();
     ZELDA_ANDROID_STAGE("registered exports");

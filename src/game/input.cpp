@@ -51,6 +51,7 @@ static struct {
 } DropState;
 
 static std::atomic_bool android_disable_rumble = false;
+static std::atomic_bool android_sync_boot_dma = false;
 
 bool recomp::android_should_disable_rumble() {
     return android_disable_rumble.load(std::memory_order_relaxed);
@@ -58,6 +59,14 @@ bool recomp::android_should_disable_rumble() {
 
 void recomp::set_android_disable_rumble(bool disabled) {
     android_disable_rumble.store(disabled, std::memory_order_relaxed);
+}
+
+bool recomp::android_should_use_sync_boot_dma() {
+    return android_sync_boot_dma.load(std::memory_order_relaxed);
+}
+
+void recomp::set_android_sync_boot_dma(bool enabled) {
+    android_sync_boot_dma.store(enabled, std::memory_order_relaxed);
 }
 
 std::atomic<recomp::InputDevice> scanning_device = recomp::InputDevice::COUNT;

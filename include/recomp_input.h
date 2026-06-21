@@ -199,6 +199,8 @@ namespace recomp {
     bool all_input_disabled();
     bool android_should_disable_rumble();
     void set_android_disable_rumble(bool disabled);
+    bool android_should_use_sync_boot_dma();
+    void set_android_sync_boot_dma(bool enabled);
 }
 
 #endif

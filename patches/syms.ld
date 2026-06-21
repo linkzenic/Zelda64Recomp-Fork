@@ -54,3 +54,4 @@ recomp_destroy_actor_data = 0x8F0000CC;
 recomp_get_actor_data = 0x8F0000D0;
 recomp_get_actor_spawn_index = 0x8F0000D4;
 recomp_android_should_disable_rumble = 0x8F0000D8;
+recomp_android_should_use_sync_boot_dma = 0x8F0000DC;

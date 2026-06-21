@@ -151,6 +151,10 @@ extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_cont
     _return<s32>(ctx, recomp::android_should_disable_rumble());
 }
 
+extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, recomp::android_should_use_sync_boot_dma());
+}
+
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
     float* x_out = _arg<0, float*>(rdram, ctx);
     float* y_out = _arg<1, float*>(rdram, ctx);
