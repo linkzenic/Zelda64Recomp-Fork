@@ -109,7 +109,7 @@ static void android_configure_device_flags() {
     }
 
     const bool is_samsung = android_string_equals_ci(manufacturer, "samsung");
-    const bool disable_rumble = is_samsung;
+    const bool disable_rumble = false;
     const bool sync_boot_dma = is_samsung;
     recomp::set_android_disable_rumble(disable_rumble);
     recomp::set_android_sync_boot_dma(sync_boot_dma);
@@ -211,7 +211,7 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #endif
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) > 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) > 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 

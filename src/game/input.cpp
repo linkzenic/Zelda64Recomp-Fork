@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <algorithm>
 #include <mutex>
 #include <string>
 
@@ -10,6 +11,10 @@
 #include "zelda_config.h"
 #include "recomp_ui.h"
 #include "SDL.h"
+#ifdef __ANDROID__
+#include "SDL_system.h"
+#include <jni.h>
+#endif
 #include "promptfont.h"
 #include "GamepadMotion.hpp"
 
@@ -162,6 +167,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
                 ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
                 state.controller = controller;
+                printf("  Rumble: %s\n", SDL_GameControllerHasRumble(controller) == SDL_TRUE ? "yes" : "no");
 
                 if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
                     SDL_GameControllerSetSensorEnabled(controller, SDL_SensorType::SDL_SENSOR_GYRO, SDL_TRUE);
@@ -587,6 +593,120 @@ static float smoothstep(float from, float to, float amount) {
     return std::lerp(from, to, amount);
 }
 
+#ifdef __ANDROID__
+static bool android_vibrator_rumble(uint16_t strength, uint32_t duration_ms) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    if (env == nullptr) {
+        return false;
+    }
+
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (activity == nullptr) {
+        return false;
+    }
+
+    jclass activity_class = env->GetObjectClass(activity);
+    if (activity_class == nullptr) {
+        env->DeleteLocalRef(activity);
+        return false;
+    }
+
+    jmethodID get_system_service = env->GetMethodID(
+        activity_class,
+        "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;");
+    if (get_system_service == nullptr) {
+        env->DeleteLocalRef(activity_class);
+        env->DeleteLocalRef(activity);
+        return false;
+    }
+
+    jstring vibrator_name = env->NewStringUTF("vibrator");
+    jobject vibrator = env->CallObjectMethod(activity, get_system_service, vibrator_name);
+    env->DeleteLocalRef(vibrator_name);
+    env->DeleteLocalRef(activity_class);
+    env->DeleteLocalRef(activity);
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+
+    if (vibrator == nullptr) {
+        return false;
+    }
+
+    jclass vibrator_class = env->GetObjectClass(vibrator);
+    if (vibrator_class == nullptr) {
+        env->DeleteLocalRef(vibrator);
+        return false;
+    }
+
+    if (strength == 0) {
+        jmethodID cancel = env->GetMethodID(vibrator_class, "cancel", "()V");
+        if (cancel != nullptr) {
+            env->CallVoidMethod(vibrator, cancel);
+        }
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(vibrator_class);
+        env->DeleteLocalRef(vibrator);
+        return true;
+    }
+
+    bool vibrated = false;
+    jclass vibration_effect_class = env->FindClass("android/os/VibrationEffect");
+    if (vibration_effect_class != nullptr) {
+        jmethodID create_one_shot = env->GetStaticMethodID(
+            vibration_effect_class,
+            "createOneShot",
+            "(JI)Landroid/os/VibrationEffect;");
+        jmethodID vibrate_effect = env->GetMethodID(
+            vibrator_class,
+            "vibrate",
+            "(Landroid/os/VibrationEffect;)V");
+
+        if (create_one_shot != nullptr && vibrate_effect != nullptr) {
+            const jint amplitude = std::clamp<int>((strength * 255) / 0xFFFF, 1, 255);
+            jobject effect = env->CallStaticObjectMethod(
+                vibration_effect_class,
+                create_one_shot,
+                static_cast<jlong>(duration_ms),
+                amplitude);
+            if (!env->ExceptionCheck() && effect != nullptr) {
+                env->CallVoidMethod(vibrator, vibrate_effect, effect);
+                vibrated = !env->ExceptionCheck();
+            }
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+            if (effect != nullptr) {
+                env->DeleteLocalRef(effect);
+            }
+        }
+        env->DeleteLocalRef(vibration_effect_class);
+    } else if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+    }
+
+    if (!vibrated) {
+        jmethodID vibrate_legacy = env->GetMethodID(vibrator_class, "vibrate", "(J)V");
+        if (vibrate_legacy != nullptr) {
+            env->CallVoidMethod(vibrator, vibrate_legacy, static_cast<jlong>(duration_ms));
+            vibrated = !env->ExceptionCheck();
+        }
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+    }
+
+    env->DeleteLocalRef(vibrator_class);
+    env->DeleteLocalRef(vibrator);
+    return vibrated;
+}
+#endif
+
 // Update rumble to attempt to mimic the way n64 rumble ramps up and falls off
 void recomp::update_rumble() {
     // Note: values are not accurate! just approximations based on feel
@@ -602,6 +722,7 @@ void recomp::update_rumble() {
 
     uint16_t rumble_strength = smooth_rumble * (recomp::get_rumble_strength() * 0xFFFF / 100);
     uint32_t duration = 1000000; // Dummy duration value that lasts long enough to matter as the game will reset rumble on its own.
+    bool any_sdl_rumble = false;
     {
         std::lock_guard lock{ InputState.cur_controllers_mutex };
         for (const auto& controller : InputState.cur_controllers) {
@@ -620,11 +741,25 @@ void recomp::update_rumble() {
                 continue;
             }
 
-            if (SDL_JoystickRumble(joystick, 0, rumble_strength, duration) != 0) {
-                state_it->second.rumble_failed = true;
+            if (SDL_GameControllerHasRumble(controller) != SDL_TRUE) {
+                continue;
+            }
+
+            any_sdl_rumble = true;
+            if (SDL_GameControllerRumble(controller, rumble_strength, rumble_strength, duration) != 0) {
+                if (rumble_strength != 0) {
+                    printf("Controller rumble failed for instance %d: %s\n", joystick_id, SDL_GetError());
+                    state_it->second.rumble_failed = true;
+                }
             }
         }
     }
+
+#ifdef __ANDROID__
+    if (!any_sdl_rumble) {
+        android_vibrator_rumble(rumble_strength, rumble_strength != 0 ? 100 : 0);
+    }
+#endif
 }
 
 bool controller_button_state(int32_t input_id) {
