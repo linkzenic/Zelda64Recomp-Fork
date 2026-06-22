@@ -14,6 +14,9 @@
 #define osCreateMesgQueue osCreateMesgQueue_recomp
 #define osRecvMesg osRecvMesg_recomp
 #define osSendMesg osSendMesg_recomp
+#define osCreateThread osCreateThread_recomp
+#define osStartThread osStartThread_recomp
+#define osStopThread osStopThread_recomp
 #define osViGetCurrentFramebuffer osViGetCurrentFramebuffer_recomp
 #define osFlashWriteArray osFlashWriteArray_recomp
 #define osFlashWriteBuffer osFlashWriteBuffer_recomp

@@ -19,6 +19,7 @@ void PadMgr_UpdateRumble(void);
 void PadMgr_UpdateConnections(void);
 void PadMgr_UpdateInputs(void);
 void PadMgr_InitVoice(void);
+void PadMgr_ThreadEntry(void);
 void PadMgr_RumbleSet(u8 enable[MAXCONTROLLERS]);
 void PadMgr_SetRumbleRetraceCallback(void (*callback)(void*), void* arg);
 s32 PadMgr_ControllerHasRumblePak(s32 port);
@@ -27,6 +28,7 @@ void PadMgr_ReleaseSerialEventQueue(OSMesgQueue* serialEventQueue);
 
 
 extern PadMgr* sPadMgrInstance;
+extern PadMgr gPadMgr;
 extern s32 sPadMgrRetraceCount;
 extern FaultMgr gFaultMgr;
 extern s32 sVoiceInitStatus;
@@ -61,6 +63,32 @@ RECOMP_PATCH s32 Rumble_ControllerOneHasRumblePak(void) {
     }
 
     return PadMgr_ControllerHasRumblePak(0);
+}
+
+RECOMP_PATCH void PadMgr_Init(OSMesgQueue* siEvtQ, IrqMgr* irqMgr, OSId threadId, OSPri pri, void* stack) {
+    recomp_printf("[PadMgrDiag] init begin instance=%p gPadMgr=%p siEvtQ=%p irqMgr=%p stack=%p threadId=%d pri=%d\n",
+        sPadMgrInstance, &gPadMgr, siEvtQ, irqMgr, stack, threadId, pri);
+
+    if (sPadMgrInstance != &gPadMgr) {
+        recomp_printf("[PadMgrDiag] correcting PadMgr instance from %p to %p\n", sPadMgrInstance, &gPadMgr);
+        sPadMgrInstance = &gPadMgr;
+    }
+
+    bzero(sPadMgrInstance, sizeof(PadMgr));
+    sPadMgrInstance->irqMgr = irqMgr;
+
+    osCreateMesgQueue(&sPadMgrInstance->serialLockQueue, &sPadMgrInstance->serialMsg, 1);
+    osCreateMesgQueue(&sPadMgrInstance->lockQueue, &sPadMgrInstance->lockMsg, 1);
+
+    PadMgr_UnlockPadData();
+    PadSetup_Init(siEvtQ, &sPadMgrInstance->validCtrlrsMask, sPadMgrInstance->padStatus);
+    sPadMgrInstance->nControllers = MAXCONTROLLERS;
+    osContSetCh(sPadMgrInstance->nControllers);
+    PadMgr_ReleaseSerialEventQueue(siEvtQ);
+
+    osCreateThread(&sPadMgrInstance->thread, threadId, PadMgr_ThreadEntry, sPadMgrInstance, stack, pri);
+    osStartThread(&sPadMgrInstance->thread);
+    recomp_printf("[PadMgrDiag] init end instance=%p\n", sPadMgrInstance);
 }
 
 RECOMP_PATCH void PadMgr_HandleRetrace(void) {
