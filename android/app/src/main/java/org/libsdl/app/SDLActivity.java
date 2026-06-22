@@ -286,6 +286,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     }
 
     /**
+     * Called after SDL has loaded native libraries, before SDL starts native state.
+     * Subclasses can override this to configure native process state.
+     */
+    protected void onNativeLibrariesLoaded() {
+    }
+
+    /**
      * This method is called by SDL before starting the native application thread.
      * It can be overridden to provide the arguments after the application name.
      * The default implementation returns an empty array. It never returns null.
@@ -377,6 +384,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
            return;
         }
+
+        onNativeLibrariesLoaded();
 
         // Set up JNI
         SDL.setupJNI();

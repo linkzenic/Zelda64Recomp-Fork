@@ -116,6 +116,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private boolean usingPublicDataDir;
     private boolean storageSettingsRequested;
     private boolean publicStorageReadyNotified;
+    private File programDir;
     private File appDataDir;
     private File nativeModLibDir;
     private View overlayView;
@@ -154,7 +155,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         preferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         installJavaCrashHandler();
 
-        File programDir = new File(getFilesDir(), "program");
+        programDir = new File(getFilesDir(), "program");
         appDataDir = resolveAppDataDir();
         prepareAppDataDir(appDataDir);
         setupPersistentLogs();
@@ -193,23 +194,12 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         }
         Log.i(TAG, "SDLActivity.onCreate returned");
         appendLog("SDLActivity.onCreate returned");
-        configureNativeLogging();
         lockLandscape();
         applyImmersiveFullscreen();
         requestHighRefreshRate();
         setupControllerOverlay();
         attachTouchController();
 
-        nativeSetenv("APP_PROGRAM_PATH", programDir.getAbsolutePath());
-        nativeSetenv("APP_FOLDER_PATH", appDataDir.getAbsolutePath());
-        nativeSetenv("APP_NATIVE_LIBS_PATH", nativeModLibDir.getAbsolutePath());
-        nativeSetenv("APP_NATIVE_LIBRARY_DIR", getApplicationInfo().nativeLibraryDir);
-        nativeSetenv("APP_ANDROID_VERSION_NAME", getAndroidVersionName());
-        nativeSetenv("APP_ANDROID_MANUFACTURER", Build.MANUFACTURER);
-        nativeSetenv("APP_ANDROID_MODEL", Build.MODEL);
-        nativeSetenv("APP_ANDROID_SDK", Integer.toString(Build.VERSION.SDK_INT));
-        nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
-        applyCustomDriverEnvironment();
         Log.i(TAG, "APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         Log.i(TAG, "APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         Log.i(TAG, "APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
@@ -237,6 +227,12 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     @Override
     protected String[] getLibraries() {
         return new String[] { "SDL2", "main" };
+    }
+
+    @Override
+    protected void onNativeLibrariesLoaded() {
+        configureNativeLogging();
+        applyStartupNativeEnvironment();
     }
 
     @Override
@@ -910,6 +906,25 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         } catch (UnsatisfiedLinkError error) {
             appendLog("Native logging is unavailable", error);
         }
+    }
+
+    private void applyStartupNativeEnvironment() {
+        if (programDir == null || appDataDir == null || nativeModLibDir == null) {
+            appendLog("Native startup environment unavailable");
+            return;
+        }
+
+        nativeSetenv("APP_PROGRAM_PATH", programDir.getAbsolutePath());
+        nativeSetenv("APP_FOLDER_PATH", appDataDir.getAbsolutePath());
+        nativeSetenv("APP_NATIVE_LIBS_PATH", nativeModLibDir.getAbsolutePath());
+        nativeSetenv("APP_NATIVE_LIBRARY_DIR", getApplicationInfo().nativeLibraryDir);
+        nativeSetenv("APP_ANDROID_VERSION_NAME", getAndroidVersionName());
+        nativeSetenv("APP_ANDROID_MANUFACTURER", Build.MANUFACTURER);
+        nativeSetenv("APP_ANDROID_MODEL", Build.MODEL);
+        nativeSetenv("APP_ANDROID_SDK", Integer.toString(Build.VERSION.SDK_INT));
+        nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
+        applyCustomDriverEnvironment();
+        appendLog("Native startup environment configured");
     }
 
     private void appendLog(String message) {
