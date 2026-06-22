@@ -99,34 +99,58 @@ RECOMP_PATCH size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* r
     s32 size = vromEnd - vromStart;
     uintptr_t end;
     OverlayRelocationSection* ovlRelocs;
+    s32 syncBootDma = recomp_android_should_use_sync_boot_dma();
     
     // @recomp Load the overlay in the recomp runtime.
+    recomp_printf("[OverlayLoadDiag] begin vrom=%08llX-%08llX ram=%08llX-%08llX dst=%08llX size=%08X sync=%d\n",
+                  (u64)vromStart, (u64)vromEnd, (u64)vramStart, (u64)vramEnd, (u64)(uintptr_t)allocatedRamAddr,
+                  size, syncBootDma);
+    recomp_printf("[OverlayLoadDiag] recomp_load_overlays begin\n");
     recomp_load_overlays(vromStart, allocatedRamAddr, vromEnd - vromStart);
+    recomp_printf("[OverlayLoadDiag] recomp_load_overlays end\n");
 
     if (gOverlayLogSeverity >= 3) {}
     if (gOverlayLogSeverity >= 3) {}
 
     end = (uintptr_t)allocatedRamAddr + size;
-    DmaMgr_SendRequest0(allocatedRamAddr, vromStart, size);
+    if (syncBootDma) {
+        // Match the Samsung boot DMA workaround for overlay loads too. Other
+        // Android devices keep the original queued DMA path below.
+        recomp_printf("[OverlayLoadDiag] DmaMgr_DmaRomToRam begin\n");
+        DmaMgr_DmaRomToRam(vromStart, allocatedRamAddr, size);
+        recomp_printf("[OverlayLoadDiag] DmaMgr_DmaRomToRam end\n");
+    } else {
+        recomp_printf("[OverlayLoadDiag] DmaMgr_SendRequest0 begin\n");
+        DmaMgr_SendRequest0(allocatedRamAddr, vromStart, size);
+        recomp_printf("[OverlayLoadDiag] DmaMgr_SendRequest0 end\n");
+    }
 
     ovlRelocs = (OverlayRelocationSection*)(end - ((s32*)end)[-1]);
+    recomp_printf("[OverlayLoadDiag] reloc offset=%08X relocs=%08llX\n", ((s32*)end)[-1], (u64)(uintptr_t)ovlRelocs);
 
     if (gOverlayLogSeverity >= 3) {}
     if (gOverlayLogSeverity >= 3) {}
 
+    recomp_printf("[OverlayLoadDiag] Overlay_Relocate begin\n");
     Overlay_Relocate(allocatedRamAddr, ovlRelocs, vramStart);
+    recomp_printf("[OverlayLoadDiag] Overlay_Relocate end\n");
 
     if (ovlRelocs->bssSize != 0) {
         if (gOverlayLogSeverity >= 3) {}
+        recomp_printf("[OverlayLoadDiag] bzero begin size=%08X\n", ovlRelocs->bssSize);
         bzero((void*)end, ovlRelocs->bssSize);
+        recomp_printf("[OverlayLoadDiag] bzero end\n");
     }
 
     size = vramEnd - vramStart;
 
+    recomp_printf("[OverlayLoadDiag] cache begin size=%08X\n", size);
     osWritebackDCache(allocatedRamAddr, size);
     osInvalICache(allocatedRamAddr, size);
+    recomp_printf("[OverlayLoadDiag] cache end\n");
 
     if (gOverlayLogSeverity >= 3) {}
 
+    recomp_printf("[OverlayLoadDiag] end size=%08X\n", size);
     return size;
 }
