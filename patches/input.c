@@ -10,6 +10,14 @@ RECOMP_DECLARE_EVENT(recomp_before_first_person_aiming_update_event(PlayState* p
 RECOMP_DECLARE_EVENT(recomp_after_first_person_aiming_update_event(PlayState* play, Player* this, bool in_free_look));
 RECOMP_DECLARE_EVENT(recomp_set_extra_item_slot_statuses(PlayState* play, s32 enabled));
 
+#if defined(ZELDA_ANDROID_BUILTIN_DPAD)
+void on_set_slot_statuses(PlayState* play, s32 enabled);
+void on_update_buttons_part2(PlayState* play);
+#else
+#define on_set_slot_statuses(play, enabled) ((void)0)
+#define on_update_buttons_part2(play) ((void)0)
+#endif
+
 s32 func_80847190(PlayState* play, Player* this, s32 arg2);
 s16 func_80832754(Player* this, s32 arg1);
 s32 func_8082EF20(Player* this);
@@ -352,6 +360,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                            on_set_slot_statuses(play, BTN_DISABLED);
                         }
                     } else if (gSaveContext.buttonStatus[EQUIP_SLOT_B] == BTN_DISABLED) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_B] = BTN_ENABLED;
@@ -359,6 +368,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_ENABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_ENABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_ENABLED);
+                        on_set_slot_statuses(play, BTN_ENABLED);
                     }
 
                     Interface_SetHudVisibility(HUD_VISIBILITY_B_MAGIC);
@@ -372,6 +382,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_ENABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_ENABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_ENABLED);
+                        on_set_slot_statuses(play, BTN_ENABLED);
                         if (play->sceneId == SCENE_BOWLING) {
                             if (CURRENT_DAY == 1) {
                                 BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B) = ITEM_BOMBCHU;
@@ -385,6 +396,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                            on_set_slot_statuses(play, BTN_DISABLED);
                         } else {
                             // @recomp_use_export_var no_bow_epona_fix: Part of the no bow Epona fix.
                             if (EPONA_FIX_ACTIVE) {
@@ -417,6 +429,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                                 gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                                 gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                                 recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                                on_set_slot_statuses(play, BTN_DISABLED);
                                 Interface_SetHudVisibility(HUD_VISIBILITY_A_HEARTS_MAGIC_MINIMAP_WITH_OVERWRITE);
                             }
                         }
@@ -444,6 +457,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                        on_set_slot_statuses(play, BTN_DISABLED);
                         Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
                     } else if (ON_EPONA) {
                         Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
@@ -469,6 +483,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                 } else {
                     // @recomp_use_export_var no_bow_epona_fix: Part of the no bow Epona fix.
                     if (EPONA_FIX_ACTIVE) {
@@ -513,6 +528,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_HEARTS_MAGIC_MINIMAP_WITH_OVERWRITE);
                 }
 
@@ -531,6 +547,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
                 } else if (ON_EPONA) {
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
@@ -601,6 +618,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
         } else if ((gSaveContext.save.entrance == ENTRANCE(GORON_RACETRACK, 1)) &&
                    (play->transitionTrigger == TRANS_TRIGGER_OFF) && (play->transitionMode == TRANS_MODE_OFF)) {
@@ -609,6 +627,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             Interface_SetHudVisibility(HUD_VISIBILITY_A_B_HEARTS_MAGIC_MINIMAP);
         } else if (play->actorCtx.flags & ACTORCTX_FLAG_PICTO_BOX_ON) {
             // Related to pictograph
@@ -789,6 +808,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
         }
     } else if (!gSaveContext.save.saveInfo.playerData.isMagicAcquired && (CUR_FORM == PLAYER_FORM_DEKU) &&
                (BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B) == ITEM_DEKU_NUT)) {
@@ -887,6 +907,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             restoreHudVisibility = true;
             Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
         }
@@ -1126,6 +1147,8 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
         gSaveContext.hudVisibility = HUD_VISIBILITY_IDLE;
         Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
     }
+
+    on_update_buttons_part2(play);
 }
 
 typedef struct {

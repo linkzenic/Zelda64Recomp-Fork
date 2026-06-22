@@ -1,5 +1,6 @@
 #include "patches.h"
 
+#if !defined(ZELDA_ANDROID_BUILTIN_DPAD)
 RECOMP_PATCH ItemId Player_GetItemOnButton(PlayState* play, Player* player, EquipSlot slot) {
     if (slot >= EQUIP_SLOT_A) {
         return ITEM_NONE;
@@ -37,3 +38,7 @@ RECOMP_PATCH ItemId Player_GetItemOnButton(PlayState* play, Player* player, Equi
 
     return C_BTN_ITEM(EQUIP_SLOT_C_RIGHT);
 }
+#endif
+
+// Player_GetItemOnButton is patched in dpad_builtin.c so Android can keep the
+// built-in D-Pad feature without runtime code-page mutation.

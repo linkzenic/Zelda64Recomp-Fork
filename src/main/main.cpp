@@ -839,7 +839,9 @@ int main(int argc, char** argv) {
     }
 #endif
 
+#if !defined(ZELDA_ANDROID_RUNTIME_APK)
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
+#endif
 #if defined(__ANDROID__)
     if (android_safe_mode_enabled()) {
         ZELDA_ANDROID_LOG("safe mode active; optional embedded mods skipped");

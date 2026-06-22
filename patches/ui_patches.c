@@ -300,6 +300,13 @@ void Interface_DrawBButtonIcons(PlayState* play);
 void Interface_DrawCButtonIcons(PlayState* play);
 void Interface_DrawClock(PlayState* play);
 void Interface_DrawItemButtons(PlayState* play);
+#if defined(ZELDA_ANDROID_BUILTIN_DPAD)
+void draw_dpad(PlayState* play);
+void draw_dpad_icons(PlayState* play);
+#else
+#define draw_dpad(play) ((void)0)
+#define draw_dpad_icons(play) ((void)0)
+#endif
 void Interface_DrawMinigameIcons(PlayState* play);
 void Interface_DrawPauseMenuEquippingIcons(PlayState* play);
 void Interface_DrawPerfectLetters(PlayState* play);
@@ -590,11 +597,13 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
         Gfx_SetupDL39_Overlay(play->state.gfxCtx);
 
         Interface_DrawItemButtons(play);
+        draw_dpad(play);
 
         if (player->transformation == GET_PLAYER_FORM) {
             Interface_DrawBButtonIcons(play);
         }
         Interface_DrawCButtonIcons(play);
+        draw_dpad_icons(play);
 
         Interface_DrawAButton(play);
 

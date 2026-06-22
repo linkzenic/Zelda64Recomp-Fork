@@ -4,6 +4,9 @@
 #define RECOMP_EXPORT __attribute__((section(".recomp_export")))
 #define RECOMP_PATCH __attribute__((section(".recomp_patch")))
 #define RECOMP_FORCE_PATCH __attribute__((section(".recomp_force_patch")))
+#define RECOMP_CALLBACK(mod, event)
+#define RECOMP_HOOK(func)
+#define RECOMP_HOOK_RETURN(func)
 #define RECOMP_DECLARE_EVENT(func) \
     _Pragma("GCC diagnostic push") \
     _Pragma("GCC diagnostic ignored \"-Wunused-parameter\"") \
