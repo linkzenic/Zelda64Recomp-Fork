@@ -19,6 +19,42 @@ static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     return value >= start && value <= end && size <= (end - value);
 }
 
+RECOMP_PATCH void AudioPlayback_InitNoteFreeList(void) {
+    Note* note;
+    s32 i;
+
+    recomp_printf("[AudioDiag] InitNoteFreeList begin notes=%p numNotes=%d miscStart=%p miscCur=%p miscSize=%d\n",
+                  gAudioCtx.notes, gAudioCtx.numNotes, gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr,
+                  gAudioCtx.miscPool.size);
+
+    AudioPlayback_InitNoteLists(&gAudioCtx.noteFreeLists);
+
+    if (!AudioDiag_PtrInPool(gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), &gAudioCtx.miscPool)) {
+        recomp_printf("[AudioDiag] InitNoteFreeList invalid notes allocation notes=%p bytes=%d miscStart=%p miscSize=%d\n",
+                      gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), gAudioCtx.miscPool.startAddr,
+                      gAudioCtx.miscPool.size);
+        return;
+    }
+
+    for (i = 0; i < gAudioCtx.numNotes; i++) {
+        note = &gAudioCtx.notes[i];
+
+        if (i < 4 || i == (gAudioCtx.numNotes - 1)) {
+            recomp_printf("[AudioDiag] InitNoteFreeList note=%d ptr=%p item=%p listPrev=%p listNext=%p\n", i, note,
+                          &note->listItem, gAudioCtx.noteFreeLists.disabled.prev,
+                          gAudioCtx.noteFreeLists.disabled.next);
+        }
+
+        note->listItem.u.value = note;
+        note->listItem.prev = NULL;
+        AudioScript_AudioListPushBack(&gAudioCtx.noteFreeLists.disabled, &note->listItem);
+    }
+
+    recomp_printf("[AudioDiag] InitNoteFreeList end count=%d prev=%p next=%p\n",
+                  gAudioCtx.noteFreeLists.disabled.u.count, gAudioCtx.noteFreeLists.disabled.prev,
+                  gAudioCtx.noteFreeLists.disabled.next);
+}
+
 RECOMP_PATCH void AudioPlayback_NoteInitAll(void) {
     Note* note;
     s32 i;
