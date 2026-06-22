@@ -10,8 +10,9 @@ final String freetypePrefix = System.getenv('ZELDA_ANDROID_FREETYPE_PREFIX') ?: 
 final String hostFileToC = System.getenv('ZELDA_ANDROID_FILE_TO_C') ?: "${System.getenv('TMPDIR') ?: '/tmp'}/zelda64-file-to-c"
 final String patchesCCompiler = System.getenv('PATCHES_C_COMPILER') ?: '/opt/homebrew/opt/llvm/bin/clang'
 final String patchesLd = System.getenv('PATCHES_LD') ?: '/opt/homebrew/bin/ld.lld'
-final boolean zeldaProbe = (project.findProperty('zeldaProbe') ?: 'true').toString().toBoolean()
-final boolean zeldaRuntimeApk = !zeldaProbe
+final boolean zeldaVulkanProbe = (project.findProperty('zeldaVulkanProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaProbe = zeldaVulkanProbe ? false : (project.findProperty('zeldaProbe') ?: 'true').toString().toBoolean()
+final boolean zeldaRuntimeApk = !zeldaProbe && !zeldaVulkanProbe
 final boolean zeldaNativeOptimized = (project.findProperty('zeldaNativeOptimized') ?: (zeldaRuntimeApk ? 'true' : 'false')).toString().toBoolean()
 final String zeldaApplicationId = (project.findProperty('zeldaApplicationId') ?: 'io.github.zelda64recomp').toString()
 final String androidKeystorePath = (project.findProperty('ANDROID_KEYSTORE_PATH') ?: System.getenv('ANDROID_KEYSTORE_PATH') ?: '').toString()
@@ -32,7 +33,7 @@ android {
         minSdk 24
         targetSdk 36
         versionCode 33
-        versionName zeldaProbe ? '0.3.3-android-sdl-probe' : '0.3.3'
+        versionName zeldaVulkanProbe ? '0.3.3-android-vulkan-probe' : (zeldaProbe ? '0.3.3-android-sdl-probe' : '0.3.3')
 
         externalNativeBuild {
             cmake {
@@ -52,6 +53,7 @@ android {
                     "-DPATCHES_LD=${patchesLd}", \
                     "-DZELDA_ANDROID_SHELL_ONLY=${zeldaProbe ? 'ON' : 'OFF'}", \
                     "-DZELDA_ANDROID_SDL_LIFECYCLE_PROBE=${zeldaProbe ? 'ON' : 'OFF'}", \
+                    "-DZELDA_ANDROID_VULKAN_SMOKE_PROBE=${zeldaVulkanProbe ? 'ON' : 'OFF'}", \
                     "-DZELDA_ANDROID_RUNTIME_APK=${zeldaRuntimeApk ? 'ON' : 'OFF'}"
                 if (zeldaNativeOptimized) {
                     cFlags '-O2', '-g', '-DNDEBUG'
@@ -96,6 +98,8 @@ android {
             jniLibs.srcDirs = [generatedJniLibsDir]
             if (zeldaRuntimeApk) {
                 assets.srcDirs = [generatedProgramAssetsDir]
+            } else {
+                assets.srcDirs = []
             }
         }
     }

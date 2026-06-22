@@ -50,11 +50,29 @@ set(ZELDA_HOST_FILE_TO_C "file_to_c" CACHE FILEPATH "Host file_to_c executable u
 if (CMAKE_SYSTEM_NAME MATCHES "Android")
     option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
     option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
+    option(ZELDA_ANDROID_VULKAN_SMOKE_PROBE "Build a minimal SDL/Vulkan smoke probe as Android libmain.so." OFF)
     option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." ON)
 else()
     option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
     option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
+    option(ZELDA_ANDROID_VULKAN_SMOKE_PROBE "Build a minimal SDL/Vulkan smoke probe as Android libmain.so." OFF)
     option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." OFF)
+endif()
+
+if (ZELDA_ANDROID_VULKAN_SMOKE_PROBE)
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android")
+        message(FATAL_ERROR "ZELDA_ANDROID_VULKAN_SMOKE_PROBE is only supported for Android builds.")
+    endif()
+
+    find_package(SDL2 REQUIRED)
+
+    add_library(main SHARED
+        ${CMAKE_SOURCE_DIR}/src/android/vulkan_smoke_probe.cpp
+    )
+    target_include_directories(main PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(main PRIVATE SDL2::SDL2 android log vulkan)
+
+    return()
 endif()
 
 if (ZELDA_ANDROID_SHELL_ONLY)

@@ -174,7 +174,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .android-prefixes
-          key: android-prefixes-${{ runner.os }}-sdl2-2.32.10-freetype-2.13.3-ndk-28.2.13676358
+          key: android-prefixes-${{ runner.os }}-sdl2-2.32.10-freetype-2.13.3-ndk-28.2.13676358-16kb-v1
 
       - name: Prepare Android dependencies
         run: tools/ci/setup_android_deps.sh
@@ -234,6 +234,15 @@ jobs:
 
       - name: Verify APK
         run: tools/ci/verify_android_apk.sh "${{ steps.apk.outputs.path }}" runtime
+
+      - name: Upload native symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zelda64-Recompiled-Android-${{ inputs.build_type }}-native-symbols
+          path: |
+            android/app/build/intermediates/cxx/**/obj/arm64-v8a/*.so
+            android/app/build/intermediates/merged_native_libs/**/out/lib/arm64-v8a/*.so
+          if-no-files-found: warn
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

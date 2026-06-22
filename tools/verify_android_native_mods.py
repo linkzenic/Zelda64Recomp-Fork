@@ -16,6 +16,8 @@ LINUX_ONLY_NEEDED = {
     "libstdc++.so.6",
 }
 
+MIN_LOAD_ALIGNMENT = 16384
+
 
 def c_string(data, offset):
     end = data.find(b"\0", offset)
@@ -75,6 +77,24 @@ def read_needed(data):
     return [c_string(data, strtab_offset + needed_offset) for needed_offset in needed_offsets]
 
 
+def read_load_alignments(data):
+    e_phoff = struct.unpack_from("<Q", data, 32)[0]
+    e_phentsize = struct.unpack_from("<H", data, 54)[0]
+    e_phnum = struct.unpack_from("<H", data, 56)[0]
+    if e_phentsize < 56:
+        raise ValueError("invalid program header size")
+
+    alignments = []
+    for index in range(e_phnum):
+        offset = e_phoff + index * e_phentsize
+        if offset + 56 > len(data):
+            raise ValueError("truncated program header table")
+        p_type = struct.unpack_from("<I", data, offset)[0]
+        if p_type == 1:  # PT_LOAD
+            alignments.append(struct.unpack_from("<Q", data, offset + 48)[0])
+    return alignments
+
+
 def validate_so(label, data):
     errors = []
     if len(data) < 64 or data[:4] != b"\x7fELF":
@@ -98,12 +118,24 @@ def validate_so(label, data):
         errors.append(f"{label}: failed to read dynamic dependencies: {exc}")
         needed = []
 
+    try:
+        load_alignments = read_load_alignments(data)
+    except (struct.error, IndexError, ValueError) as exc:
+        errors.append(f"{label}: failed to read load segment alignment: {exc}")
+        load_alignments = []
+
+    bad_alignments = [alignment for alignment in load_alignments if alignment < MIN_LOAD_ALIGNMENT]
+    if bad_alignments:
+        formatted = ", ".join(f"0x{alignment:x}" for alignment in bad_alignments)
+        errors.append(f"{label}: PT_LOAD alignment below 16 KiB: {formatted}")
+
     bad_needed = sorted(set(needed) & LINUX_ONLY_NEEDED)
     if bad_needed:
         errors.append(f"{label}: has non-Android Linux dependencies: {', '.join(bad_needed)}")
 
     status = "ok" if not errors else "invalid"
-    print(f"{label}: {status} needed=[{', '.join(needed) if needed else 'none'}]")
+    align_text = ", ".join(f"0x{alignment:x}" for alignment in load_alignments) if load_alignments else "none"
+    print(f"{label}: {status} needed=[{', '.join(needed) if needed else 'none'}] load_align=[{align_text}]")
     return errors
 
 

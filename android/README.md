@@ -60,6 +60,26 @@ The default probe target and debug runtime APK can still be built for quick SDL 
 gradle --no-daemon -p android :app:assembleDebug
 ```
 
+For Samsung or driver-specific Vulkan startup debugging, build the minimal Vulkan smoke probe. This uses the normal Android activity and SDL surface path, but skips the game runtime, generated code, bundled mods, and RT64:
+
+```sh
+gradle --no-daemon -p android :app:assembleDebug -PzeldaVulkanProbe=true
+```
+
+## Native Binary Checks
+
+Android release builds must keep every packaged native shared object 16 KiB page-size compatible. This matters on newer Android 15/16 devices and is checked by:
+
+```sh
+tools/ci/verify_android_apk.sh path/to.apk runtime
+```
+
+The dependency setup script also rebuilds SDL2 when the cached `libSDL2.so` was produced with old 4 KiB `PT_LOAD` alignment. To check the device page size during testing:
+
+```sh
+adb shell getconf PAGE_SIZE
+```
+
 ## Required Inputs
 
 - `ANDROID_HOME`, defaulting to `$HOME/Library/Android/sdk`
@@ -90,6 +110,9 @@ These are copied into `/sdcard/Zelda64/mods` on launch. The current bundled pack
 
 - `ProxyMM_KV.nrm`
 - `ProxyRecomp_KV005.so`
+- `yazmt_mm_corelib.nrm`
+- `yazmt_mm_global_objects.nrm`
+- `yazmt_mm_playermodelmanager.nrm`
 - `yazmt_mm_playermodelmanager_fsmodels.nrm`
 - `yazmt_mm_playermodelmanager_fsmodels_extlib.so`
 

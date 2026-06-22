@@ -7,6 +7,7 @@ ANDROID_ABI="${ANDROID_ABI:-arm64-v8a}"
 ANDROID_PLATFORM="${ANDROID_PLATFORM:-24}"
 PREFIX_ROOT="${ANDROID_PREFIX_ROOT:-$HOME/Android/prefixes}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)}"
+MIN_LOAD_ALIGNMENT="${ZELDA_ANDROID_MIN_LOAD_ALIGNMENT:-16384}"
 
 : "${ANDROID_HOME:?ANDROID_HOME must point at the Android SDK}"
 : "${ANDROID_NDK_HOME:=${ANDROID_HOME}/ndk/28.2.13676358}"
@@ -39,7 +40,45 @@ fetch() {
   fi
 }
 
-if [[ ! -f "$SDL2_PREFIX/lib/libSDL2.so" || ! -f "$SDL2_PREFIX/lib/cmake/SDL2/SDL2Config.cmake" ]]; then
+elf_load_alignment_ok() {
+  local elf="$1"
+  local min_alignment="$2"
+  python3 - "$elf" "$min_alignment" <<'PY'
+import pathlib
+import struct
+import sys
+
+path = pathlib.Path(sys.argv[1])
+min_alignment = int(sys.argv[2], 0)
+data = path.read_bytes()
+
+if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+    raise SystemExit(1)
+
+e_phoff = struct.unpack_from("<Q", data, 32)[0]
+e_phentsize = struct.unpack_from("<H", data, 54)[0]
+e_phnum = struct.unpack_from("<H", data, 56)[0]
+if e_phentsize < 56:
+    raise SystemExit(1)
+
+bad = []
+for index in range(e_phnum):
+    offset = e_phoff + index * e_phentsize
+    if offset + 56 > len(data):
+        raise SystemExit(1)
+    p_type = struct.unpack_from("<I", data, offset)[0]
+    if p_type == 1:
+        p_align = struct.unpack_from("<Q", data, offset + 48)[0]
+        if p_align < min_alignment:
+            bad.append(p_align)
+
+if bad:
+    print(f"{path}: PT_LOAD alignment below {min_alignment}: " + ", ".join(hex(value) for value in bad), file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+if [[ ! -f "$SDL2_PREFIX/lib/libSDL2.so" || ! -f "$SDL2_PREFIX/lib/cmake/SDL2/SDL2Config.cmake" ]] || ! elf_load_alignment_ok "$SDL2_PREFIX/lib/libSDL2.so" "$MIN_LOAD_ALIGNMENT"; then
   echo "Building SDL2 ${SDL2_VERSION} for ${ANDROID_ABI} -> ${SDL2_PREFIX}"
   rm -rf "SDL2-${SDL2_VERSION}" "build-sdl2-${ANDROID_ABI}"
   fetch "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz" "SDL2-${SDL2_VERSION}.tar.gz"
@@ -49,12 +88,14 @@ if [[ ! -f "$SDL2_PREFIX/lib/libSDL2.so" || ! -f "$SDL2_PREFIX/lib/cmake/SDL2/SD
     -DANDROID_ABI="$ANDROID_ABI" \
     -DANDROID_PLATFORM="android-${ANDROID_PLATFORM}" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384" \
     -DCMAKE_INSTALL_PREFIX="$SDL2_PREFIX" \
     -DSDL_SHARED=ON \
     -DSDL_STATIC=OFF \
     -DSDL_TEST=OFF
   "$CMAKE_BIN" --build "build-sdl2-${ANDROID_ABI}" --parallel "$JOBS"
   "$CMAKE_BIN" --install "build-sdl2-${ANDROID_ABI}"
+  elf_load_alignment_ok "$SDL2_PREFIX/lib/libSDL2.so" "$MIN_LOAD_ALIGNMENT"
 else
   echo "Using cached SDL2 prefix: ${SDL2_PREFIX}"
 fi
