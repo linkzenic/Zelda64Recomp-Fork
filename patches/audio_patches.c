@@ -1,21 +1,15 @@
 #include "patches.h"
 #include "audio/heap.h"
 #include "audio/load.h"
-#include "audio/soundfont.h"
-#include "buffers.h"
 #include "input.h"
 
 extern NoteSampleState gZeroedSampleState;
 
 #define AUDIO_DIAG_MAX_SAMPLE_DMAS 0x100
-#define AUDIO_DIAG_MAX_FALLBACK_FONTS 0x40
 
 static s32 AudioDiag_LogAllocCount = 0;
 static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
 static SampleDma sAudioDiagSampleDmas[AUDIO_DIAG_MAX_SAMPLE_DMAS] = { { (u8*)1, 0, 0, 0, 0, 0, 0 } };
-static s16 sAudioDiagAiBuffers[3][AIBUF_LEN];
-static SoundFont sAudioDiagSoundFontList[AUDIO_DIAG_MAX_FALLBACK_FONTS];
-static OSPiHandle sAudioDiagCartHandle;
 
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
@@ -65,149 +59,6 @@ void AudioHeap_LoadLowPassFilter(s16* filter, s32 cutoff);
 void AudioHeap_DiscardSampleCacheEntry(SampleCacheEntry* entry);
 void AudioHeap_DiscardSequence(s32 seqId);
 void AudioHeap_DiscardSampleBank(s32 sampleBankId);
-void AudioLoad_InitTable(AudioTable* table, uintptr_t romAddr, u16 unkMediumParam);
-void AudioLoad_InitSoundFont(s32 fontId);
-
-RECOMP_PATCH void AudioLoad_Init(void* heap, size_t heapSize) {
-    s32 pad1[9];
-    s32 numFonts;
-    s32 pad2[2];
-    u8* audioCtxPtr;
-    void* addr;
-    s32 i;
-    s32 j;
-
-    gAudioCustomUpdateFunction = NULL;
-    gAudioCustomReverbFunction = NULL;
-    gAudioCustomSynthFunction = NULL;
-
-    for (i = 0; i < ARRAY_COUNT(gAudioCtx.customSeqFunctions); i++) {
-        gAudioCtx.customSeqFunctions[i] = NULL;
-    }
-
-    gAudioCtx.resetTimer = 0;
-    gAudioCtx.unk_29B8 = false;
-
-    audioCtxPtr = (u8*)&gAudioCtx;
-    for (j = sizeof(gAudioCtx); j > 0; j--) {
-        *audioCtxPtr++ = 0;
-    }
-
-    switch (osTvType) {
-        case OS_TV_PAL:
-            gAudioCtx.unk_2960 = 20.03042f;
-            gAudioCtx.refreshRate = 50;
-            break;
-
-        case OS_TV_MPAL:
-            gAudioCtx.unk_2960 = 16.546f;
-            gAudioCtx.refreshRate = 60;
-            break;
-
-        case OS_TV_NTSC:
-        default:
-            gAudioCtx.unk_2960 = 16.713f;
-            gAudioCtx.refreshRate = 60;
-    }
-
-    AudioThread_InitMesgQueues();
-
-    for (i = 0; i < ARRAY_COUNT(gAudioCtx.numSamplesPerFrame); i++) {
-        gAudioCtx.numSamplesPerFrame[i] = 0xA0;
-    }
-
-    gAudioCtx.totalTaskCount = 0;
-    gAudioCtx.rspTaskIndex = 0;
-    gAudioCtx.curAiBufferIndex = 0;
-    gAudioCtx.soundMode = SOUNDMODE_STEREO;
-    gAudioCtx.curTask = NULL;
-    gAudioCtx.rspTask[0].task.t.dataSize = 0;
-    gAudioCtx.rspTask[1].task.t.dataSize = 0;
-
-    osCreateMesgQueue(&gAudioCtx.syncDmaQueue, &gAudioCtx.syncDmaMesg, 1);
-    osCreateMesgQueue(&gAudioCtx.curAudioFrameDmaQueue, gAudioCtx.currAudioFrameDmaMesgBuf,
-                      ARRAY_COUNT(gAudioCtx.currAudioFrameDmaMesgBuf));
-    osCreateMesgQueue(&gAudioCtx.externalLoadQueue, gAudioCtx.externalLoadMesgBuf,
-                      ARRAY_COUNT(gAudioCtx.externalLoadMesgBuf));
-    osCreateMesgQueue(&gAudioCtx.preloadSampleQueue, gAudioCtx.preloadSampleMesgBuf,
-                      ARRAY_COUNT(gAudioCtx.preloadSampleMesgBuf));
-    gAudioCtx.curAudioFrameDmaCount = 0;
-    gAudioCtx.sampleDmaCount = 0;
-    gAudioCtx.cartHandle = &sAudioDiagCartHandle;
-
-    if (heap == NULL) {
-        gAudioCtx.audioHeap = gAudioHeap;
-        gAudioCtx.audioHeapSize = gAudioHeapInitSizes.heapSize;
-    } else {
-        void** hp = &heap;
-
-        gAudioCtx.audioHeap = *hp;
-        gAudioCtx.audioHeapSize = heapSize;
-    }
-
-    if (gAudioCtx.audioHeap == NULL || gAudioCtx.audioHeapSize == 0) {
-        recomp_printf("[AudioDiag] AudioLoad_Init invalid heap=%p size=%d, using bundled heap\n",
-                      gAudioCtx.audioHeap, gAudioCtx.audioHeapSize);
-        gAudioCtx.audioHeap = gAudioHeap;
-        gAudioCtx.audioHeapSize = gAudioHeapInitSizes.heapSize;
-    }
-
-    for (i = 0; i < ((s32)gAudioCtx.audioHeapSize / (s32)sizeof(u64)); i++) {
-        ((u64*)gAudioCtx.audioHeap)[i] = 0;
-    }
-
-    AudioHeap_InitMainPool(gAudioHeapInitSizes.initPoolSize);
-
-    for (i = 0; i < ARRAY_COUNT(gAudioCtx.aiBuffers); i++) {
-        gAudioCtx.aiBuffers[i] = AudioHeap_AllocZeroed(&gAudioCtx.initPool, AIBUF_LEN * sizeof(s16));
-        if (gAudioCtx.aiBuffers[i] == NULL) {
-            recomp_printf("[AudioDiag] AudioLoad_Init using static AI buffer index=%d\n", i);
-            bzero(sAudioDiagAiBuffers[i], sizeof(sAudioDiagAiBuffers[i]));
-            gAudioCtx.aiBuffers[i] = sAudioDiagAiBuffers[i];
-        }
-    }
-
-    gAudioCtx.sequenceTable = (AudioTable*)gSequenceTable;
-    gAudioCtx.soundFontTable = (AudioTable*)gSoundFontTable;
-    gAudioCtx.sampleBankTable = (AudioTable*)gSampleBankTable;
-    gAudioCtx.sequenceFontTable = gSequenceFontTable;
-
-    gAudioCtx.numSequences = gAudioCtx.sequenceTable->numEntries;
-
-    gAudioCtx.specId = 0;
-    gAudioCtx.resetStatus = 1;
-    AudioHeap_ResetStep();
-
-    AudioLoad_InitTable(gAudioCtx.sequenceTable, SEGMENT_ROM_START(Audioseq), 0);
-    AudioLoad_InitTable(gAudioCtx.soundFontTable, SEGMENT_ROM_START(Audiobank), 0);
-    AudioLoad_InitTable(gAudioCtx.sampleBankTable, SEGMENT_ROM_START(Audiotable), 0);
-
-    numFonts = gAudioCtx.soundFontTable->numEntries;
-    gAudioCtx.soundFontList = AudioHeap_Alloc(&gAudioCtx.initPool, numFonts * sizeof(SoundFont));
-    if (gAudioCtx.soundFontList == NULL) {
-        if (numFonts > AUDIO_DIAG_MAX_FALLBACK_FONTS) {
-            recomp_printf("[AudioDiag] AudioLoad_Init too many fonts for fallback count=%d max=%d\n",
-                          numFonts, AUDIO_DIAG_MAX_FALLBACK_FONTS);
-            numFonts = AUDIO_DIAG_MAX_FALLBACK_FONTS;
-        }
-        bzero(sAudioDiagSoundFontList, sizeof(sAudioDiagSoundFontList));
-        gAudioCtx.soundFontList = sAudioDiagSoundFontList;
-        recomp_printf("[AudioDiag] AudioLoad_Init using static soundFontList count=%d\n", numFonts);
-    }
-
-    for (i = 0; i < numFonts; i++) {
-        AudioLoad_InitSoundFont(i);
-    }
-
-    addr = AudioHeap_Alloc(&gAudioCtx.initPool, gAudioHeapInitSizes.permanentPoolSize);
-    if (addr == NULL) {
-        *((u32*)&gAudioHeapInitSizes.permanentPoolSize) = 0;
-    }
-
-    AudioHeap_InitPool(&gAudioCtx.permanentPool, addr, gAudioHeapInitSizes.permanentPoolSize);
-    gAudioCtxInitalized = true;
-    osSendMesg(gAudioCtx.taskStartQueueP, (void*)gAudioCtx.totalTaskCount, OS_MESG_NOBLOCK);
-}
 
 RECOMP_PATCH void AudioHeap_InitPool(AudioAllocPool* pool, void* addr, size_t size) {
     uintptr_t alignedAddr = ALIGN16((uintptr_t)addr);
