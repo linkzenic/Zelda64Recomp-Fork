@@ -1,9 +1,11 @@
 #include "patches.h"
 #include "audio/heap.h"
+#include "input.h"
 
 extern NoteSampleState gZeroedSampleState;
 
 static s32 AudioDiag_LogAllocCount = 0;
+static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
 
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
@@ -116,6 +118,48 @@ RECOMP_PATCH void* AudioHeap_AllocZeroed(AudioAllocPool* pool, size_t size) {
 
     bzero(addr, zeroEnd - zeroStart);
     return addr;
+}
+
+static f32 AudioDiag_CalculateAdsrDecay(f32 scaleInv) {
+    return 256.0f * gAudioCtx.audioBufferParameters.updatesPerFrameInvScaled / scaleInv;
+}
+
+RECOMP_PATCH void AudioHeap_InitAdsrDecayTable(void) {
+    f32* table = gAudioCtx.adsrDecayTable;
+    s32 useStaticTable = recomp_android_should_use_sync_boot_dma();
+    s32 i;
+
+    if (!AudioDiag_PtrInPool(table, sizeof(sAudioDiagAdsrDecayTable), &gAudioCtx.miscPool)) {
+        useStaticTable = true;
+    }
+
+    if (useStaticTable) {
+        recomp_printf("[AudioDiag] Using static ADSR table old=%p static=%p miscStart=%p miscCur=%p miscSize=%d syncBootDma=%d\n",
+                      table, sAudioDiagAdsrDecayTable, gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr,
+                      gAudioCtx.miscPool.size, recomp_android_should_use_sync_boot_dma());
+        table = sAudioDiagAdsrDecayTable;
+        gAudioCtx.adsrDecayTable = table;
+    }
+
+    table[255] = AudioDiag_CalculateAdsrDecay(0.25f);
+    table[254] = AudioDiag_CalculateAdsrDecay(0.33f);
+    table[253] = AudioDiag_CalculateAdsrDecay(0.5f);
+    table[252] = AudioDiag_CalculateAdsrDecay(0.66f);
+    table[251] = AudioDiag_CalculateAdsrDecay(0.75f);
+
+    for (i = 128; i < 251; i++) {
+        table[i] = AudioDiag_CalculateAdsrDecay(251 - i);
+    }
+
+    for (i = 16; i < 128; i++) {
+        table[i] = AudioDiag_CalculateAdsrDecay(4 * (143 - i));
+    }
+
+    for (i = 1; i < 16; i++) {
+        table[i] = AudioDiag_CalculateAdsrDecay(60 * (23 - i));
+    }
+
+    table[0] = 0.0f;
 }
 
 RECOMP_PATCH void AudioPlayback_InitNoteFreeList(void) {
