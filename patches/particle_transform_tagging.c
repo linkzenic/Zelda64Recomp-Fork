@@ -50,6 +50,9 @@ RECOMP_PATCH void EffectSS_Init(PlayState* play, s32 numEntries) {
     }
 
     sEffectSsInfo.dataTable = (EffectSs*)THA_AllocTailAlign16(&play->state.tha, numEntries * sizeof(EffectSs));
+    if (sEffectSsInfo.dataTable == NULL) {
+        recomp_crash("Particle table allocation failed");
+    }
     sEffectSsInfo.searchIndex = 0;
     sEffectSsInfo.size = numEntries;
 

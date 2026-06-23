@@ -127,6 +127,14 @@ void ZeldaArena_Init(void* start, size_t size);
 
 void Play_SpawnScene(PlayState* this, s32 sceneId, s32 spawn);
 void Play_InitMotionBlur(void);
+s32 Scene_ExecuteCommands(PlayState* play, SceneCmd* sceneSegment);
+void func_80123140(PlayState* play, Player* player);
+void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx);
+void func_800FEAB0(void);
+u32 Environment_GetStormState(PlayState* play);
+void Environment_StopStormNatureAmbience(PlayState* play);
+s32 Object_SpawnPersistent(ObjectContext* objectCtx, s16 id);
+s32 Room_StartRoomTransition(PlayState* play, RoomContext* roomCtx, s32 index);
 
 extern s16 sTransitionFillTimer;
 extern Input D_801F6C18;
@@ -154,6 +162,228 @@ RECOMP_DECLARE_EVENT(recomp_on_play_init(PlayState* this));
 RECOMP_DECLARE_EVENT(recomp_after_play_init(PlayState* this));
 
 bool allow_no_ocarina_tf = false;
+
+static void AndroidDiag_LoadRomToRam(void* dst, uintptr_t vromStart, size_t size, const char* label) {
+    if (size == 0) {
+        return;
+    }
+
+    if (dst == NULL) {
+        recomp_printf("[AndroidLoadDiag] %s skipped null dst vrom=%08llX size=%08X\n", label, (u64)vromStart, size);
+        return;
+    }
+
+    if (recomp_android_should_use_sync_boot_dma()) {
+        recomp_printf("[AndroidLoadDiag] %s sync dst=%08llX vrom=%08llX size=%08X\n",
+                      label, (u64)(uintptr_t)dst, (u64)vromStart, size);
+        DmaMgr_DmaRomToRam(vromStart, dst, size);
+    } else {
+        DmaMgr_SendRequest0(dst, vromStart, size);
+    }
+}
+
+RECOMP_PATCH s32 Object_SpawnPersistent(ObjectContext* objectCtx, s16 id) {
+    size_t size;
+
+    if (objectCtx->numEntries >= ARRAY_COUNT(objectCtx->slots)) {
+        recomp_crash("Object context persistent slot overflow");
+    }
+
+    objectCtx->slots[objectCtx->numEntries].id = id;
+    size = gObjectTable[id].vromEnd - gObjectTable[id].vromStart;
+
+    if (size != 0) {
+        AndroidDiag_LoadRomToRam(objectCtx->slots[objectCtx->numEntries].segment, gObjectTable[id].vromStart, size,
+                                 "object persistent");
+    }
+
+    if (objectCtx->numEntries < ARRAY_COUNT(objectCtx->slots) - 1) {
+        objectCtx->slots[objectCtx->numEntries + 1].segment =
+            (void*)ALIGN16((uintptr_t)objectCtx->slots[objectCtx->numEntries].segment + size);
+    }
+
+    objectCtx->numEntries++;
+    objectCtx->numPersistentEntries = objectCtx->numEntries;
+
+    return objectCtx->numEntries - 1;
+}
+
+RECOMP_PATCH void Object_InitContext(GameState* gameState, ObjectContext* objectCtx) {
+    PlayState* play = (PlayState*)gameState;
+    s32 pad;
+    u32 spaceSize;
+    s32 i;
+
+    if (play->sceneId == SCENE_CLOCKTOWER || play->sceneId == SCENE_TOWN || play->sceneId == SCENE_BACKTOWN ||
+        play->sceneId == SCENE_ICHIBA) {
+        spaceSize = 1530 * 1024;
+    } else if (play->sceneId == SCENE_MILK_BAR) {
+        spaceSize = 1580 * 1024;
+    } else if (play->sceneId == SCENE_00KEIKOKU) {
+        spaceSize = 1470 * 1024;
+    } else {
+        spaceSize = 1380 * 1024;
+    }
+
+    objectCtx->numEntries = 0;
+    objectCtx->numPersistentEntries = 0;
+    objectCtx->mainKeepSlot = 0;
+    objectCtx->subKeepSlot = 0;
+
+    for (i = 0; i < ARRAY_COUNT(objectCtx->slots); i++) {
+        objectCtx->slots[i].id = 0;
+    }
+
+    objectCtx->spaceStart = objectCtx->slots[0].segment = THA_AllocTailAlign16(&gameState->tha, spaceSize);
+    if (objectCtx->spaceStart == NULL) {
+        recomp_crash("Object context allocation failed");
+    }
+
+    objectCtx->spaceEnd = (void*)((uintptr_t)objectCtx->spaceStart + spaceSize);
+    objectCtx->mainKeepSlot = Object_SpawnPersistent(objectCtx, GAMEPLAY_KEEP);
+
+    gSegments[4] = OS_K0_TO_PHYSICAL(objectCtx->slots[objectCtx->mainKeepSlot].segment);
+}
+
+RECOMP_PATCH void Object_UpdateEntries(ObjectContext* objectCtx) {
+    s32 i;
+    ObjectEntry* entry = &objectCtx->slots[0];
+    RomFile* objectFile;
+    size_t size;
+
+    for (i = 0; i < objectCtx->numEntries; i++) {
+        if (entry->id < 0) {
+            s32 id = -entry->id;
+
+            if (entry->dmaReq.vromAddr == 0) {
+                objectFile = &gObjectTable[id];
+                size = objectFile->vromEnd - objectFile->vromStart;
+
+                if (size == 0) {
+                    entry->id = 0;
+                } else if (recomp_android_should_use_sync_boot_dma()) {
+                    AndroidDiag_LoadRomToRam(entry->segment, objectFile->vromStart, size, "object async-sync");
+                    entry->id = id;
+                } else {
+                    osCreateMesgQueue(&entry->loadQueue, &entry->loadMsg, 1);
+                    DmaMgr_SendRequestImpl(&entry->dmaReq, entry->segment, objectFile->vromStart, size, 0,
+                                           &entry->loadQueue, NULL);
+                }
+            } else if (!osRecvMesg(&entry->loadQueue, NULL, OS_MESG_NOBLOCK)) {
+                entry->id = id;
+            }
+        }
+
+        entry++;
+    }
+}
+
+RECOMP_PATCH void Object_LoadAll(ObjectContext* objectCtx) {
+    s32 i;
+    s32 id;
+    uintptr_t vromSize;
+
+    for (i = 0; i < objectCtx->numEntries; i++) {
+        id = objectCtx->slots[i].id;
+        vromSize = gObjectTable[id].vromEnd - gObjectTable[id].vromStart;
+
+        if (vromSize == 0) {
+            continue;
+        }
+
+        AndroidDiag_LoadRomToRam(objectCtx->slots[i].segment, gObjectTable[id].vromStart, vromSize, "object all");
+    }
+}
+
+RECOMP_PATCH void* func_8012F73C(ObjectContext* objectCtx, s32 slot, s16 id) {
+    uintptr_t addr;
+    uintptr_t vromSize;
+    RomFile* fileTableEntry;
+
+    if (slot < 0 || slot >= ARRAY_COUNT(objectCtx->slots)) {
+        recomp_crash("Object slot out of bounds");
+    }
+
+    objectCtx->slots[slot].id = -id;
+    objectCtx->slots[slot].dmaReq.vromAddr = 0;
+
+    fileTableEntry = &gObjectTable[id];
+    vromSize = fileTableEntry->vromEnd - fileTableEntry->vromStart;
+
+    addr = ((uintptr_t)objectCtx->slots[slot].segment) + vromSize;
+    addr = ALIGN16(addr);
+
+    return (void*)addr;
+}
+
+RECOMP_PATCH void Scene_LoadAreaTextures(PlayState* play, s32 fileIndex) {
+    static RomFile sceneTextureFiles[9] = {
+        { 0, 0 },
+        { SEGMENT_ROM_START(scene_texture_01), SEGMENT_ROM_END(scene_texture_01) },
+        { SEGMENT_ROM_START(scene_texture_02), SEGMENT_ROM_END(scene_texture_02) },
+        { SEGMENT_ROM_START(scene_texture_03), SEGMENT_ROM_END(scene_texture_03) },
+        { SEGMENT_ROM_START(scene_texture_04), SEGMENT_ROM_END(scene_texture_04) },
+        { SEGMENT_ROM_START(scene_texture_05), SEGMENT_ROM_END(scene_texture_05) },
+        { SEGMENT_ROM_START(scene_texture_06), SEGMENT_ROM_END(scene_texture_06) },
+        { SEGMENT_ROM_START(scene_texture_07), SEGMENT_ROM_END(scene_texture_07) },
+        { SEGMENT_ROM_START(scene_texture_08), SEGMENT_ROM_END(scene_texture_08) },
+    };
+    uintptr_t vromStart;
+    size_t size;
+
+    if (fileIndex < 0 || fileIndex >= ARRAY_COUNT(sceneTextureFiles)) {
+        recomp_printf("[AndroidLoadDiag] invalid area texture index=%d\n", fileIndex);
+        return;
+    }
+
+    vromStart = sceneTextureFiles[fileIndex].vromStart;
+    size = sceneTextureFiles[fileIndex].vromEnd - vromStart;
+
+    if (size != 0) {
+        play->roomCtx.unk74 = THA_AllocTailAlign16(&play->state.tha, size);
+        if (play->roomCtx.unk74 == NULL) {
+            recomp_crash("Area texture allocation failed");
+        }
+        AndroidDiag_LoadRomToRam(play->roomCtx.unk74, vromStart, size, "area texture");
+    }
+}
+
+RECOMP_PATCH s32 Room_StartRoomTransition(PlayState* play, RoomContext* roomCtx, s32 index) {
+    if (roomCtx->status == 0) {
+        size_t size;
+
+        if (index < 0 || index >= play->numRooms) {
+            recomp_crash("Room transition index out of bounds");
+        }
+
+        roomCtx->prevRoom = roomCtx->curRoom;
+        roomCtx->curRoom.num = index;
+        roomCtx->curRoom.segment = NULL;
+        roomCtx->status = 1;
+
+        size = play->roomList[index].vromEnd - play->roomList[index].vromStart;
+        roomCtx->activeRoomVram = (void*)(ALIGN16((uintptr_t)roomCtx->roomMemPages[roomCtx->activeMemPage] -
+                                                  (size + 8) * roomCtx->activeMemPage - 7));
+
+        if (roomCtx->activeRoomVram == NULL) {
+            recomp_crash("Room transition active page is null");
+        }
+
+        osCreateMesgQueue(&roomCtx->loadQueue, roomCtx->loadMsg, ARRAY_COUNT(roomCtx->loadMsg));
+        if (recomp_android_should_use_sync_boot_dma()) {
+            AndroidDiag_LoadRomToRam(roomCtx->activeRoomVram, play->roomList[index].vromStart, size, "room transition");
+            osSendMesg(&roomCtx->loadQueue, NULL, OS_MESG_NOBLOCK);
+        } else {
+            DmaMgr_SendRequestImpl(&roomCtx->dmaRequest, roomCtx->activeRoomVram, play->roomList[index].vromStart, size,
+                                   0, &roomCtx->loadQueue, NULL);
+        }
+        roomCtx->activeMemPage ^= 1;
+
+        return 1;
+    }
+
+    return 0;
+}
 
 // @recomp_export void recomp_set_allow_no_ocarina_tf(bool new_val): Set whether to force Termina Field to load normally even if Link has no ocarina.
 RECOMP_EXPORT void recomp_set_allow_no_ocarina_tf(bool new_val) {
@@ -404,10 +634,25 @@ RECOMP_PATCH void Play_Init(GameState* thisx) {
     CutsceneFlags_UnsetAll(this);
     THA_GetRemaining(&this->state.tha);
     zAllocSize = THA_GetRemaining(&this->state.tha);
-    zAlloc = (uintptr_t)THA_AllocTailAlign16(&this->state.tha, zAllocSize);
+    if (zAllocSize <= 0) {
+        recomp_crash("Play arena has no remaining THA memory");
+    }
 
-    //! @bug: Incorrect ALIGN16s
-    ZeldaArena_Init((void*)((zAlloc + 8) & ~0xF), (zAllocSize - ((zAlloc + 8) & ~0xF)) + zAlloc);
+    zAlloc = (uintptr_t)THA_AllocTailAlign16(&this->state.tha, zAllocSize);
+    if (zAlloc == 0) {
+        recomp_crash("Play arena allocation failed");
+    }
+
+    {
+        uintptr_t zAllocAligned = ALIGN16(zAlloc + 8);
+        size_t zArenaSize = (zAlloc + zAllocSize > zAllocAligned) ? (zAlloc + zAllocSize - zAllocAligned) : 0;
+
+        if (zArenaSize == 0) {
+            recomp_crash("Play arena aligned size is zero");
+        }
+
+        ZeldaArena_Init((void*)zAllocAligned, zArenaSize);
+    }
 
     Actor_InitContext(this, &this->actorCtx, this->linkActorEntry);
 

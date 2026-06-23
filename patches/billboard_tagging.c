@@ -62,7 +62,14 @@ void edit_billboard_groups(PlayState* play) {
 }
 
 RECOMP_PATCH Mtx* Matrix_NewMtx(GraphicsContext* gfxCtx) {
-    Mtx* ret = Matrix_ToMtx(GRAPH_ALLOC(gfxCtx, sizeof(Mtx)));
+    Mtx* alloc = GRAPH_ALLOC(gfxCtx, sizeof(Mtx));
+    Mtx* ret;
+
+    if (alloc == NULL) {
+        recomp_crash("Matrix allocation failed");
+    }
+
+    ret = Matrix_ToMtx(alloc);
 
     if (*current_billboard_state) {
         if (tracked_billboard_matrix_count >= MAX_TRACKED_BILLBOARDS) {
@@ -79,6 +86,9 @@ RECOMP_PATCH Mtx* Matrix_NewMtx(GraphicsContext* gfxCtx) {
 
 RECOMP_PATCH void Matrix_Init(GameState* gameState) {
     sMatrixStack = THA_AllocTailAlign16(&gameState->tha, MATRIX_STACK_SIZE * sizeof(MtxF));
+    if (sMatrixStack == NULL) {
+        recomp_crash("Matrix stack allocation failed");
+    }
     sCurrentMatrix = sMatrixStack;
 
     // @recomp Reset the matrix stack billboard states.
