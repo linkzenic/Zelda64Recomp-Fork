@@ -11,6 +11,23 @@ static s32 AudioDiag_LogAllocCount = 0;
 static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
 static SampleDma sAudioDiagSampleDmas[AUDIO_DIAG_MAX_SAMPLE_DMAS] = { { (u8*)1, 0, 0, 0, 0, 0, 0 } };
 
+extern ReverbSettings reverbSettings0[3];
+extern ReverbSettings reverbSettings1[3];
+extern ReverbSettings reverbSettings2[3];
+extern ReverbSettings reverbSettings3[3];
+extern ReverbSettings reverbSettings4[3];
+extern ReverbSettings reverbSettings5[3];
+extern ReverbSettings reverbSettings6[3];
+extern ReverbSettings reverbSettings7[3];
+extern ReverbSettings reverbSettings8[2];
+extern ReverbSettings reverbSettings9[3];
+extern ReverbSettings reverbSettingsA[3];
+extern ReverbSettings reverbSettingsB[3];
+extern ReverbSettings reverbSettingsC[3];
+extern ReverbSettings reverbSettingsD[3];
+extern ReverbSettings reverbSettingsE[3];
+extern ReverbSettings reverbSettingsF[2];
+
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
     uintptr_t end;
@@ -46,6 +63,64 @@ static s32 AudioDiag_PoolLooksValid(AudioAllocPool* pool) {
     end = start + pool->size;
 
     if (end < start || cur < start || cur > end) {
+        return false;
+    }
+
+    return true;
+}
+
+static s32 AudioDiag_PtrInReverbSettingsTable(ReverbSettings* ptr, ReverbSettings* table, size_t count) {
+    uintptr_t start = (uintptr_t)table;
+    uintptr_t end = start + (count * sizeof(ReverbSettings));
+    uintptr_t value = (uintptr_t)ptr;
+
+    return value >= start && value < end && ((value - start) % sizeof(ReverbSettings)) == 0;
+}
+
+static s32 AudioDiag_ReverbSettingsPtrLooksValid(ReverbSettings* settings) {
+    if (settings == NULL) {
+        return false;
+    }
+
+    if (((uintptr_t)settings & (sizeof(u16) - 1)) != 0) {
+        return false;
+    }
+
+    return AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings0, ARRAY_COUNT(reverbSettings0)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings1, ARRAY_COUNT(reverbSettings1)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings2, ARRAY_COUNT(reverbSettings2)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings3, ARRAY_COUNT(reverbSettings3)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings4, ARRAY_COUNT(reverbSettings4)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings5, ARRAY_COUNT(reverbSettings5)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings6, ARRAY_COUNT(reverbSettings6)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings7, ARRAY_COUNT(reverbSettings7)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings8, ARRAY_COUNT(reverbSettings8)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettings9, ARRAY_COUNT(reverbSettings9)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsA, ARRAY_COUNT(reverbSettingsA)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsB, ARRAY_COUNT(reverbSettingsB)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsC, ARRAY_COUNT(reverbSettingsC)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsD, ARRAY_COUNT(reverbSettingsD)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsE, ARRAY_COUNT(reverbSettingsE)) ||
+           AudioDiag_PtrInReverbSettingsTable(settings, reverbSettingsF, ARRAY_COUNT(reverbSettingsF));
+}
+
+static s32 AudioDiag_ReverbSettingsValuesLookValid(ReverbSettings* settings, s32 reverbIndex) {
+    if (settings->downsampleRate == 0 || settings->downsampleRate > 4) {
+        return false;
+    }
+
+    if (settings->delayNumSamples == 0 || settings->delayNumSamples > 0x400) {
+        return false;
+    }
+
+    if (settings->mixReverbIndex != REVERB_INDEX_NONE &&
+        (settings->mixReverbIndex < 0 || settings->mixReverbIndex >= ARRAY_COUNT(gAudioCtx.synthesisReverbs) ||
+         settings->mixReverbIndex == reverbIndex)) {
+        return false;
+    }
+
+    if (settings->lowPassFilterCutoffLeft < 0 || settings->lowPassFilterCutoffLeft > 0x10 ||
+        settings->lowPassFilterCutoffRight < 0 || settings->lowPassFilterCutoffRight > 0x10) {
         return false;
     }
 
@@ -628,6 +703,7 @@ RECOMP_PATCH void AudioHeap_SetReverbData(s32 reverbIndex, u32 dataType, s32 dat
 RECOMP_PATCH void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit) {
     SynthesisReverb* reverb;
     size_t reverbBufferSize;
+    s32 samsungAudioPath = recomp_android_should_use_sync_boot_dma();
 
     if (reverbIndex < 0 || reverbIndex >= ARRAY_COUNT(gAudioCtx.synthesisReverbs)) {
         recomp_printf("[AudioDiag] InitReverb invalid index=%d settings=%p first=%d\n",
@@ -637,8 +713,24 @@ RECOMP_PATCH void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings
 
     reverb = &gAudioCtx.synthesisReverbs[reverbIndex];
 
+    if (samsungAudioPath && !AudioDiag_ReverbSettingsPtrLooksValid(settings)) {
+        AudioDiag_DisableReverb(reverb, reverbIndex, "settings pointer");
+        recomp_printf("[AudioDiag] InitReverb rejected settings pointer index=%d settings=%p first=%d\n",
+                      reverbIndex, settings, isFirstInit);
+        return;
+    }
+
     if (settings == NULL || settings->downsampleRate == 0) {
         AudioDiag_DisableReverb(reverb, reverbIndex, "invalid settings");
+        return;
+    }
+
+    if (samsungAudioPath && !AudioDiag_ReverbSettingsValuesLookValid(settings, reverbIndex)) {
+        AudioDiag_DisableReverb(reverb, reverbIndex, "settings values");
+        recomp_printf("[AudioDiag] InitReverb rejected settings values index=%d first=%d downsample=%d delay=%d mix=%d filterL=%d filterR=%d\n",
+                      reverbIndex, isFirstInit, settings->downsampleRate, settings->delayNumSamples,
+                      settings->mixReverbIndex, settings->lowPassFilterCutoffLeft,
+                      settings->lowPassFilterCutoffRight);
         return;
     }
 
