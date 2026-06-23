@@ -1196,6 +1196,8 @@ extern f32 AudioOcarina_BendPitchTwoSemitones(s8 bendIndex);
 // @recomp Patch the function in order to read DPad inputs for the ocarina as well as CButton inputs. 
 RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhenCancelled) {
     u32 ocarinaBtnsHeld;
+    u32 dpadOcarinaButtons = recomp_get_dpad_items_enabled() ? (BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP) : 0;
+    u32 ocarinaInputButtons = BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | dpadOcarinaButtons;
 
     // Prevents two different ocarina notes from being played on two consecutive frames
     if ((sOcarinaFlags != 0) && (sOcarinaDropInputTimer != 0)) {
@@ -1206,15 +1208,14 @@ RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhen
     // Ensures the button pressed to start the ocarina does not also play an ocarina note
     // @recomp Check for DPad inputs as well.
     if ((sOcarinaInputButtonStart == 0) ||
-        ((sOcarinaInputButtonStart & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) !=
-         (sOcarinaInputButtonCur & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)))) {
+        ((sOcarinaInputButtonStart & ocarinaInputButtons) != (sOcarinaInputButtonCur & ocarinaInputButtons))) {
         sOcarinaInputButtonStart = 0;
         if (1) {}
         sCurOcarinaPitch = OCARINA_PITCH_NONE;
         sCurOcarinaButtonIndex = OCARINA_BTN_INVALID;
         // @recomp Check for DPad inputs as well.
-        ocarinaBtnsHeld = (sOcarinaInputButtonCur & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) &
-                          (sOcarinaInputButtonPrev & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP));
+        ocarinaBtnsHeld = (sOcarinaInputButtonCur & ocarinaInputButtons) &
+                          (sOcarinaInputButtonPrev & ocarinaInputButtons);
 
         if (!(sOcarinaInputButtonPress & ocarinaBtnsHeld) && (sOcarinaInputButtonCur != 0)) {
             sOcarinaInputButtonPress = sOcarinaInputButtonCur;
@@ -1228,22 +1229,22 @@ RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhen
             sCurOcarinaButtonIndex = OCARINA_BTN_A;
 
         // @recomp Check for DPad down input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, (BTN_CDOWN | BTN_DDOWN))) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CDOWN | (recomp_get_dpad_items_enabled() ? BTN_DDOWN : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_F4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_DOWN;
 
         // @recomp Check for DPad right input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CRIGHT | BTN_DRIGHT)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CRIGHT | (recomp_get_dpad_items_enabled() ? BTN_DRIGHT : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_A4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_RIGHT;
             
         // @recomp Check for DPad left input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CLEFT | BTN_DLEFT)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CLEFT | (recomp_get_dpad_items_enabled() ? BTN_DLEFT : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_B4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_LEFT;
 
         // @recomp Check for DPad up input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CUP | BTN_DUP)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CUP | (recomp_get_dpad_items_enabled() ? BTN_DUP : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_D5;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_UP;
         }
@@ -1320,7 +1321,9 @@ RECOMP_PATCH void AudioOcarina_CheckSongsWithoutMusicStaff(void) {
 
     // @recomp Add the DPad inputs to the check.
     if (CHECK_BTN_ANY(sOcarinaInputButtonCur, BTN_L) &&
-        CHECK_BTN_ANY(sOcarinaInputButtonCur, BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) {
+        CHECK_BTN_ANY(sOcarinaInputButtonCur,
+            BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP |
+                (recomp_get_dpad_items_enabled() ? (BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP) : 0))) {
         AudioOcarina_StartDefault(sOcarinaFlags);
         return;
     }

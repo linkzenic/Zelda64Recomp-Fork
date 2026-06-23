@@ -498,6 +498,7 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 }
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
+extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
@@ -866,6 +867,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_mouse_deltas);
     REGISTER_FUNC(recomp_get_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
+    REGISTER_FUNC(recomp_get_dpad_items_enabled);
     REGISTER_FUNC(recomp_android_should_disable_rumble);
     REGISTER_FUNC(recomp_android_should_use_sync_boot_dma);
     recompui::register_ui_exports();

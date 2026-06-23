@@ -248,6 +248,7 @@ struct ControlOptionsContext {
     zelda64::CameraInvertMode camera_invert_mode;
     zelda64::AnalogCamMode analog_cam_mode;
     zelda64::CameraInvertMode analog_camera_invert_mode;
+    zelda64::DpadItemsMode dpad_items_mode;
 };
 
 ControlOptionsContext control_options_context;
@@ -366,6 +367,21 @@ void zelda64::set_analog_camera_invert_mode(zelda64::CameraInvertMode mode) {
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_camera_invert_mode");
     }
+}
+
+zelda64::DpadItemsMode zelda64::get_dpad_items_mode() {
+    return control_options_context.dpad_items_mode;
+}
+
+void zelda64::set_dpad_items_mode(zelda64::DpadItemsMode mode) {
+    control_options_context.dpad_items_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("dpad_items_mode");
+    }
+}
+
+bool zelda64::get_dpad_items_enabled() {
+    return control_options_context.dpad_items_mode == zelda64::DpadItemsMode::On;
 }
 
 struct SoundOptionsContext {
@@ -985,6 +1001,7 @@ public:
         bind_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
+        bind_option(constructor, "dpad_items_mode", &control_options_context.dpad_items_mode);
 
         general_model_handle = constructor.GetModelHandle();
     }

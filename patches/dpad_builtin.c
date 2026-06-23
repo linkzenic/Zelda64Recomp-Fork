@@ -1,11 +1,14 @@
 #include "patches.h"
+#include "input.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
-
-#define recomp_get_config_u32(key) 1
 
 INCBIN(dpad_icon, "dpad.rgba32.bin");
 
 void CmpDma_LoadFile(uintptr_t segmentVrom, s32 id, void* dst, size_t size);
+
+static bool dpad_items_enabled(void) {
+    return recomp_get_dpad_items_enabled() != 0;
+}
 
 #define DPAD_W 18
 #define DPAD_H 18
@@ -91,7 +94,7 @@ Gfx* Gfx_DrawRect_DropShadowEx(Gfx* gfx, u16 lorigin, u16 rorigin, s16 rectLeft,
 
 RECOMP_HOOK("Interface_DrawItemButtons") void draw_dpad(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
-    if (pauseCtx->state != PAUSE_STATE_MAIN && recomp_get_config_u32("draw_dpad") == 1) {
+    if (pauseCtx->state != PAUSE_STATE_MAIN && dpad_items_enabled()) {
         OPEN_DISPS(play->state.gfxCtx);
 
         gEXForceUpscale2D(OVERLAY_DISP++, 1);
@@ -139,7 +142,7 @@ u8 dpad_item_textures[4][ICON_IMG_SIZE * ICON_IMG_SIZE * 4] __attribute__((align
 
 RECOMP_HOOK("Interface_DrawCButtonIcons") void draw_dpad_icons(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
-    if (pauseCtx->state != PAUSE_STATE_MAIN && recomp_get_config_u32("draw_dpad") == 1) {
+    if (pauseCtx->state != PAUSE_STATE_MAIN && dpad_items_enabled()) {
         if (!dpad_item_icons_loaded) {
             for (int i = 0; i < 4; i++) {
                 CmpDma_LoadFile(SEGMENT_ROM_START(icon_item_static_yar), extra_button_items[0][i], dpad_item_textures[i], sizeof(dpad_item_textures[i]));
@@ -216,9 +219,11 @@ RECOMP_PATCH EquipSlot func_8082FDC4(void) {
     EquipSlot i;
 
     // @mod Check the extra item slots.
-    for (int extra_slot_index = 0; extra_slot_index < ARRAY_COUNT(buttons_to_extra_slot); extra_slot_index++) {
-        if (CHECK_BTN_ALL(sPlayerControlInput->press.button, buttons_to_extra_slot[extra_slot_index].button)) {
-            return (EquipSlot)buttons_to_extra_slot[extra_slot_index].slot;
+    if (dpad_items_enabled()) {
+        for (int extra_slot_index = 0; extra_slot_index < ARRAY_COUNT(buttons_to_extra_slot); extra_slot_index++) {
+            if (CHECK_BTN_ALL(sPlayerControlInput->press.button, buttons_to_extra_slot[extra_slot_index].button)) {
+                return (EquipSlot)buttons_to_extra_slot[extra_slot_index].slot;
+            }
         }
     }
 
@@ -239,6 +244,10 @@ RECOMP_PATCH ItemId Player_GetItemOnButton(PlayState* play, Player* player, Equi
 
     // @mod Check for extra item slots.
     if (slot <= -EQUIP_SLOT_EX_START) {
+        if (!dpad_items_enabled()) {
+            return ITEM_NONE;
+        }
+
         ItemId item = EXTRA_BTN_ITEM(-slot);
 
         // Ensure the item was valid and has been obtained.
@@ -321,7 +330,8 @@ RECOMP_PATCH void Player_Action_86(Player *this, PlayState *play) {
                 ((this->transformation != PLAYER_FORM_HUMAN) || CHECK_WEEKEVENTREG(D_8085D908[GET_PLAYER_FORM])) &&
                 // @mod Patched to also check for d-pad buttons for skipping the transformation cutscene.
                 CHECK_BTN_ANY(play->state.input[0].press.button,
-                    BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_B | BTN_A | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)))) {
+                    BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_B | BTN_A |
+                        (dpad_items_enabled() ? (BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP) : 0))))) {
         R_PLAY_FILL_SCREEN_ON = 45;
         R_PLAY_FILL_SCREEN_R = 220;
         R_PLAY_FILL_SCREEN_G = 220;
@@ -1264,6 +1274,10 @@ RECOMP_PATCH void Interface_UpdateHudAlphas(PlayState* play, s16 dimmingAlpha) {
 
 // Set the enabled status when the set item slot statuses event is fired.
 RECOMP_CALLBACK("*", recomp_set_extra_item_slot_statuses) void on_set_slot_statuses(PlayState* play, s32 enabled) {
+    if (!dpad_items_enabled()) {
+        enabled = BTN_DISABLED;
+    }
+
     for (int i = 0; i < EXTRA_ITEM_SLOT_COUNT; i++) {
         extra_item_slot_statuses[i] = enabled;
     }
@@ -1279,6 +1293,14 @@ RECOMP_HOOK("Interface_UpdateButtonsPart2") void on_update_buttons_part2(PlaySta
     Player* player = GET_PLAYER(play);
     s16 i;
     s16 restoreHudVisibility = false;
+
+    if (!dpad_items_enabled()) {
+        for (i = 0; i < EXTRA_ITEM_SLOT_COUNT; i++) {
+            extra_item_slot_statuses[i] = BTN_DISABLED;
+            extra_item_slot_alphas[i] = 0;
+        }
+        return;
+    }
 
     if (CHECK_EVENTINF(EVENTINF_41)) {
         // Related to swamp boat (non-minigame)?

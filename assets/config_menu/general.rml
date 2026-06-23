@@ -106,50 +106,80 @@
                                 type="range"
                                 min="0"
                                 max="100"
-                                style="flex: 1; margin: 0dp; nav-down: #bg_input_enabled"
+                                style="flex: 1; margin: 0dp; nav-down: #dpad_items_enabled"
                                 data-value="joystick_deadzone"
                             />
                         </div>
                     </div>
 
-                    <!-- background input -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(5)" id="conf-general__Background-Input">
-                        <label class="config-option__title">Background Input</label>
+                    <!-- d-pad items -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(5)" id="conf-general__DPad-Items">
+                        <label class="config-option__title">D-Pad Items</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(5)"
+                                name="dpad_items_mode"
+                                data-checked="dpad_items_mode"
+                                value="On"
+                                id="dpad_items_enabled"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #bg_input_enabled"
+                            />
+                            <label class="config-option__tab-label" for="dpad_items_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(5)"
+                                name="dpad_items_mode"
+                                data-checked="dpad_items_mode"
+                                value="Off"
+                                id="dpad_items_disabled"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #bg_input_disabled"
+                            />
+                            <label class="config-option__tab-label" for="dpad_items_disabled">Off</label>
+                        </div>
+                    </div>
+
+                    <!-- background input -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(6)" id="conf-general__Background-Input">
+                        <label class="config-option__title">Background Input</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(6)"
                                 name="background_input_mode"
                                 data-checked="background_input_mode"
                                 value="On"
                                 id="bg_input_enabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #autosave_enabled"
+                                style="nav-up: #dpad_items_enabled; nav-down: #autosave_enabled"
                             />
                             <label class="config-option__tab-label" for="bg_input_enabled">On</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
+                                data-event-focus="set_cur_config_index(6)"
                                 name="background_input_mode"
                                 data-checked="background_input_mode"
                                 value="Off"
                                 id="bg_input_disabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #autosave_disabled"
+                                style="nav-up: #dpad_items_disabled; nav-down: #autosave_disabled"
                             />
                             <label class="config-option__tab-label" for="bg_input_disabled">Off</label>
                         </div>
                     </div>
 
                     <!-- autosave -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(6)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
                         <label class="config-option__title">Autosaving</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
+                                data-event-focus="set_cur_config_index(7)"
                                 name="autosave_mode"
                                 data-checked="autosave_mode"
                                 value="On"
@@ -161,7 +191,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
+                                data-event-focus="set_cur_config_index(7)"
                                 name="autosave_mode"
                                 data-checked="autosave_mode"
                                 value="Off"
@@ -173,13 +203,13 @@
                     </div>
                     
                     <!-- camera inversion -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(8)">
                         <label class="config-option__title">Aiming Camera Mode</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(8)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertNone"
@@ -191,7 +221,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(8)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertX"
@@ -203,7 +233,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(8)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertY"
@@ -215,7 +245,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(8)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertBoth"
@@ -227,13 +257,13 @@
                     </div>
                     
                     <!-- analog camera -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(8)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(9)">
                         <label class="config-option__title">Analog Camera</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(8)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="analog_cam_mode"
                                 data-checked="analog_cam_mode"
                                 value="On"
@@ -245,7 +275,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(8)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="analog_cam_mode"
                                 data-checked="analog_cam_mode"
                                 value="Off"
@@ -257,13 +287,13 @@
                     </div>
                     
                     <!-- analog camera inversion -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(9)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)">
                         <label class="config-option__title">Analog Camera Mode</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(10)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertNone"
@@ -275,7 +305,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(10)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertX"
@@ -287,7 +317,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(10)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertY"
@@ -299,7 +329,7 @@
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(10)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertBoth"
@@ -334,11 +364,14 @@
                         Applies a deadzone to joystick inputs.
                     </p>
                     <p data-if="cur_config_index == 5">
+                        Enables d-pad item slots.
+                    </p>
+                    <p data-if="cur_config_index == 6">
                         Allows the game to read controller input when out of focus.
                         <br/>
                         <b>This setting does not affect keyboard input.</b>
                     </p>
-                    <p data-if="cur_config_index == 6">
+                    <p data-if="cur_config_index == 7">
                         Turns on autosaving and prevents owl saves from being deleted on load. Autosaves act as owl saves and take up the same slot as they do.
                         <br/>
                         <br/>
@@ -347,10 +380,10 @@
                         <br/>
                         <b>If autosaving is disabled, existing autosaves will be deleted when loaded.</b>
                     </p>
-                    <p data-if="cur_config_index == 7">
+                    <p data-if="cur_config_index == 8">
                         Inverts the camera controls for first-person aiming. <b>Invert Y</b> is the default and matches the original game.
                     </p>
-                    <p data-if="cur_config_index == 8">
+                    <p data-if="cur_config_index == 9">
                         Enables an analog "free" camera similar to later entries in the series that's mapped to the right analog stick on the controller.
                         <br/>
                         <br/>
@@ -359,7 +392,7 @@
                         <br/>
                         This option also enables right stick control while looking and aiming.
                     </p>
-                    <p data-if="cur_config_index == 9">
+                    <p data-if="cur_config_index == 10">
                         Inverts the camera controls for the analog camera if it's enabled. <b>None</b> is the default.
                     </p>
                 </div>

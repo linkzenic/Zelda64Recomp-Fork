@@ -25,6 +25,7 @@ DECLARE_FUNC(s32, recomp_get_analog_cam_enabled);
 DECLARE_FUNC(void, recomp_get_analog_inverted_axes, s32* x, s32* y);
 DECLARE_FUNC(void, recomp_get_camera_inputs, float* x, float* y);
 DECLARE_FUNC(void, recomp_set_right_analog_suppressed, s32 suppressed);
+DECLARE_FUNC(s32, recomp_get_dpad_items_enabled);
 DECLARE_FUNC(s32, recomp_android_should_disable_rumble);
 DECLARE_FUNC(s32, recomp_android_should_use_sync_boot_dma);
 

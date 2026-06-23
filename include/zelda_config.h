@@ -87,6 +87,21 @@ namespace zelda64 {
     AnalogCamMode get_analog_cam_mode();
     void set_analog_cam_mode(AnalogCamMode mode);
 
+    enum class DpadItemsMode {
+        On,
+        Off,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::DpadItemsMode, {
+        {zelda64::DpadItemsMode::On, "On"},
+        {zelda64::DpadItemsMode::Off, "Off"}
+    });
+
+    DpadItemsMode get_dpad_items_mode();
+    void set_dpad_items_mode(DpadItemsMode mode);
+    bool get_dpad_items_enabled();
+
     void open_quit_game_prompt();
 };
 
