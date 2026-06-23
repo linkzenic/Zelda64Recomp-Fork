@@ -454,6 +454,11 @@ extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64rec
     jobjectArray) {
 }
 
+extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeReloadClockTexturePack(
+    JNIEnv*,
+    jclass) {
+}
+
 extern "C" __attribute__((visibility("default"))) jboolean Java_io_github_zelda64recomp_ZeldaSDLActivity_attachController(
     JNIEnv*,
     jobject) {

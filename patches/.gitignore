@@ -2,5 +2,6 @@
 *.o
 *.elf
 *.bin
+!gThreeDayClock3DS*.ia8.bin
 ./funcs.h
 patches.map

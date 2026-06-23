@@ -365,12 +365,14 @@ void reset_graphics_options() {
     new_config.hpfb_option = hpfb_default;
     new_config.rr_manual_value = rr_manual_default;
     new_config.developer_mode = developer_mode_default;
+    zelda64::set_clock_style(zelda64::ClockStyle::Original);
     ultramodern::renderer::set_graphics_config(new_config);
 }
 
 bool save_graphics_config(const std::filesystem::path& path) {
     nlohmann::json config_json{};
     ultramodern::to_json(config_json, ultramodern::renderer::get_graphics_config());
+    config_json["clock_style"] = zelda64::get_clock_style();
     return save_json_with_backups(path, config_json);
 }
 
@@ -382,6 +384,7 @@ bool load_graphics_config(const std::filesystem::path& path) {
 
     ultramodern::renderer::GraphicsConfig new_config{};
     ultramodern::from_json(config_json, new_config);
+    zelda64::set_clock_style(from_or_default(config_json, "clock_style", zelda64::ClockStyle::Original));
     ultramodern::renderer::set_graphics_config(new_config);
     return true;
 }

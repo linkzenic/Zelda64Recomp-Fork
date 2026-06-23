@@ -1,4 +1,5 @@
 #include "zelda_support.h"
+#include "recomp_ui.h"
 #include <SDL.h>
 #include <cstdlib>
 #if !defined(__ANDROID__)
@@ -217,6 +218,16 @@ namespace zelda64 {
 #endif
     }
 
+    void open_clock_texture_file_dialog() {
+#ifdef __ANDROID__
+        if (!launch_android_file_dialog("openClockTextureFileDialog")) {
+            show_error_message_box("Clock texture pack", "Unable to open the Android file picker.");
+        }
+#else
+        show_error_message_box("Clock texture pack", "3DS clock texture pack import is only supported on Android.");
+#endif
+    }
+
     void show_error_message_box(const char *title, const char *message) {
 #ifdef __APPLE__
     std::string title_copy(title);
@@ -274,5 +285,11 @@ extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64rec
     else {
         __android_log_print(ANDROID_LOG_INFO, "ZeldaFileDialog", "No live mod picker callback; leaving pending mod paths for startup install");
     }
+}
+
+extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeReloadClockTexturePack(
+    JNIEnv*,
+    jclass) {
+    recompui::request_clock_texture_reload();
 }
 #endif

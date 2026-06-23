@@ -41,6 +41,7 @@ import android.widget.Toast;
 import org.libsdl.app.SDLActivity;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -63,6 +64,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final int REQUEST_STORAGE_PERMISSION = 0x5A65;
     private static final int REQUEST_OPEN_MOD_FILES = 0x5A66;
     private static final int REQUEST_OPEN_DRIVER_FILE = 0x5A67;
+    private static final int REQUEST_OPEN_CLOCK_TEXTURE_FILE = 0x5A68;
     private static final String PUBLIC_FOLDER_NAME = "Zelda64";
     private static final String PREFS_NAME = "io.github.zelda64recomp.prefs";
     private static final String PREF_TOUCH_CONTROLS_DISABLED = "touchControlsDisabled";
@@ -71,7 +73,8 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "mods",
             "mod_config",
             "roms",
-            "saves"
+            "saves",
+            "clock_texture_packs"
     };
     private static final String BUNDLED_MODS_ASSET_DIR = "bundled_mods";
     private static final String BUNDLED_MODS_SEEDED_MARKER = ".android_bundled_mods_seeded_v3";
@@ -82,6 +85,9 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final String CUSTOM_DRIVER_DIR_NAME = "custom_driver";
     private static final String CUSTOM_DRIVER_NAME_FILE = "selected_driver.txt";
     private static final String CUSTOM_DRIVER_DISPLAY_NAME_FILE = "selected_driver_display.txt";
+    private static final String CLOCK_TEXTURE_PACK_DIR_NAME = "clock_texture_packs";
+    private static final String CLOCK_TEXTURE_PACK_FILE_NAME = "clock_texture_pack.o2r";
+    private static final String CLOCK_TEXTURE_PACK_DISPLAY_FILE = "clock_texture_pack_display.txt";
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -108,6 +114,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static native void nativeOnFileDialogResult(boolean success, String path);
     private static native void nativeOnFileDialogMultipleResult(boolean success, String[] paths);
     private static native void nativeSetLogPaths(String logPath, String crashPath);
+    private static native void nativeReloadClockTexturePack();
 
     private SharedPreferences preferences;
     private boolean activityResumed;
@@ -712,6 +719,32 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         });
     }
 
+    public static void openClockTextureFileDialog() {
+        ZeldaSDLActivity activity = currentActivity;
+        if (activity == null) {
+            Log.w(TAG, "openClockTextureFileDialog requested without an active activity");
+            return;
+        }
+
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                        "application/zip",
+                        "application/octet-stream",
+                        "application/x-zip-compressed"
+                });
+                activity.startActivityForResult(intent, REQUEST_OPEN_CLOCK_TEXTURE_FILE);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to launch clock texture file picker", e);
+                activity.appendLog("Failed to launch clock texture file picker", e);
+                Toast.makeText(activity, "Unable to open file picker.", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     public static void clearCustomDriver() {
         ZeldaSDLActivity activity = currentActivity;
         if (activity == null) {
@@ -750,6 +783,15 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                 handlePickedDriverFile(data.getData());
             } else {
                 Toast.makeText(this, "GPU driver selection cancelled.", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+
+        if (requestCode == REQUEST_OPEN_CLOCK_TEXTURE_FILE) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                handlePickedClockTexturePack(data.getData());
+            } else {
+                Toast.makeText(this, "Clock texture import cancelled.", Toast.LENGTH_SHORT).show();
             }
             return;
         }
@@ -924,6 +966,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         nativeSetenv("APP_ANDROID_SDK", Integer.toString(Build.VERSION.SDK_INT));
         nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
         applyCustomDriverEnvironment();
+        applyClockTexturePackEnvironment();
         appendLog("Native startup environment configured");
     }
 
@@ -1422,6 +1465,53 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         }
     }
 
+    private void handlePickedClockTexturePack(Uri uri) {
+        try {
+            File clockPackDir = new File(appDataDir, CLOCK_TEXTURE_PACK_DIR_NAME);
+            if (!clockPackDir.exists() && !clockPackDir.mkdirs()) {
+                throw new IOException("Failed to create clock texture pack dir: " + clockPackDir);
+            }
+
+            String displayName = sanitizeFileName(getDisplayName(uri));
+            File outputFile = new File(clockPackDir, CLOCK_TEXTURE_PACK_FILE_NAME);
+            try (InputStream input = getContentResolver().openInputStream(uri);
+                 FileOutputStream output = new FileOutputStream(outputFile)) {
+                if (input == null) {
+                    throw new IOException("Content resolver returned null stream for " + uri);
+                }
+
+                byte[] buffer = new byte[1024 * 1024];
+                int bytesRead;
+                while ((bytesRead = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, bytesRead);
+                }
+            }
+
+            writeTextFile(new File(clockPackDir, CLOCK_TEXTURE_PACK_DISPLAY_FILE), displayName);
+            applyClockTexturePackEnvironment();
+            nativeReloadClockTexturePack();
+            appendLog("Clock texture pack imported: " + displayName);
+            Toast.makeText(this, "3DS clock texture pack imported.", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to import clock texture pack", e);
+            appendLog("Failed to import clock texture pack", e);
+            Toast.makeText(this, "Unable to import clock texture pack.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void applyClockTexturePackEnvironment() {
+        File clockPackDir = new File(appDataDir, CLOCK_TEXTURE_PACK_DIR_NAME);
+        File clockPackFile = new File(clockPackDir, CLOCK_TEXTURE_PACK_FILE_NAME);
+        File displayFile = new File(clockPackDir, CLOCK_TEXTURE_PACK_DISPLAY_FILE);
+        if (clockPackFile.isFile()) {
+            nativeSetenv("APP_CLOCK_TEXTURE_PACK_PATH", clockPackFile.getAbsolutePath());
+            nativeSetenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME", readTextFile(displayFile, clockPackFile.getName()));
+        } else {
+            nativeSetenv("APP_CLOCK_TEXTURE_PACK_PATH", "");
+            nativeSetenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME", "Bundled");
+        }
+    }
+
     private void copyDriverZip(Uri uri, java.util.ArrayList<String> copiedLibraries) throws IOException {
         InputStream rawInput = getContentResolver().openInputStream(uri);
         if (rawInput == null) {
@@ -1518,6 +1608,30 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
 
         Log.i(TAG, "Copied selected mod file to " + outputFile.getAbsolutePath());
         return outputFile.getAbsolutePath();
+    }
+
+    private static void writeTextFile(File file, String text) throws IOException {
+        try (FileWriter writer = new FileWriter(file, false)) {
+            writer.write(text == null ? "" : text);
+        }
+    }
+
+    private static String readTextFile(File file, String fallback) {
+        if (file == null || !file.isFile()) {
+            return fallback;
+        }
+
+        try (FileInputStream input = new FileInputStream(file)) {
+            byte[] data = new byte[(int) Math.min(file.length(), 4096)];
+            int read = input.read(data);
+            if (read <= 0) {
+                return fallback;
+            }
+            String value = new String(data, 0, read).trim();
+            return value.isEmpty() ? fallback : value;
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     private static void deleteRecursively(File file) {

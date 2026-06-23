@@ -321,7 +321,7 @@
                                 data-checked="hr_option"
                                 value="Original"
                                 id="hr_original"
-                                style="nav-up: #msaa_none; nav-down: #apply_button"
+                                style="nav-up: #msaa_none; nav-down: #clock_original"
                             />
                             <label class="config-option__tab-label" for="hr_original">Original</label>
                             <input type="radio"
@@ -331,7 +331,7 @@
                                 data-checked="hr_option"
                                 value="Clamp16x9"
                                 id="hr_16_9"
-                                style="nav-up: #msaa_2x; nav-down: #apply_button"
+                                style="nav-up: #msaa_2x; nav-down: #clock_3ds"
                                 data-style-nav-up="msaa2x_supported ? '#msaa_2x' : '#msaa_none'"
                             />
                             <label class="config-option__tab-label" for="hr_16_9">16:9</label>
@@ -342,10 +342,51 @@
                                 data-checked="hr_option"
                                 value="Full"
                                 id="hr_full"
-                                style="nav-up: #msaa_4x; nav-down: #apply_button"
+                                style="nav-up: #msaa_4x; nav-down: #clock_3ds"
                                 data-style-nav-up="msaa4x_supported ? '#msaa_4x' : (msaa2x_supported ? '#msaa_2x' : '#msaa_none')"
                             />
                             <label class="config-option__tab-label" for="hr_full">Expand</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                        <label class="config-option__title">Clock Style</label>
+                        <div class="config-option__list">
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="Original"
+                                id="clock_original"
+                                style="nav-up: #hr_original; nav-down: #apply_button"
+                                data-attr-style="is_android ? 'nav-up: #hr_original; nav-down: #clock_texture_import' : 'nav-up: #hr_original; nav-down: #apply_button'"
+                            />
+                            <label class="config-option__tab-label" for="clock_original">Original</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="ThreeDS"
+                                id="clock_3ds"
+                                style="nav-up: #hr_16_9; nav-down: #apply_button"
+                                data-attr-style="is_android ? 'nav-up: #hr_16_9; nav-down: #clock_texture_import' : 'nav-up: #hr_16_9; nav-down: #apply_button'"
+                            />
+                            <label class="config-option__tab-label" for="clock_3ds">3DS</label>
+                            <input
+                                data-if="is_android"
+                                type="radio"
+                                data-event-click="select_clock_texture_pack"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="Import"
+                                id="clock_texture_import"
+                                style="nav-up:#hr_full; nav-down:#apply_button"
+                            />
+                            <label data-if="is_android" class="config-option__tab-label" for="clock_texture_import">Import</label>
                         </div>
                     </div>
 
@@ -393,6 +434,12 @@
                     <p data-if="cur_config_index == 6">
                         Adjusts the placement of HUD elements to fit the selected aspect ratio. <b>Expand</b> will use the aspect ratio of the game's output window.
                     </p>
+                    <p data-if="cur_config_index == 7">
+                        <b>Original</b> uses the Nintendo 64 clock. <b>3DS</b> uses the bundled 3DS-style timeline clock.
+                        <br />
+                        <br />
+                        <b>Import</b> accepts 2Ship-style .o2r texture packs. Current pack: <b>{{clock_texture_pack_name}}</b>
+                    </p>
                 </div>
             </div>
             <div class="config__footer">
@@ -405,7 +452,8 @@
                         data-attrif-disabled="!options_changed"
                         onclick="apply_options"
                         id="apply_button"
-                        style="nav-up:#hr_original"
+                        style="nav-up:#clock_original"
+                        data-attr-style="is_android ? 'nav-up:#clock_texture_import' : 'nav-up:#clock_original'"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

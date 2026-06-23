@@ -105,6 +105,22 @@ namespace zelda64 {
     void set_dpad_items_mode(DpadItemsMode mode);
     bool get_dpad_items_enabled();
 
+    enum class ClockStyle {
+        Original,
+        ThreeDS,
+        Import,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::ClockStyle, {
+        {zelda64::ClockStyle::Original, "Original"},
+        {zelda64::ClockStyle::ThreeDS, "ThreeDS"},
+        {zelda64::ClockStyle::Import, "Import"}
+    });
+
+    ClockStyle get_clock_style();
+    void set_clock_style(ClockStyle style);
+
     void open_quit_game_prompt();
 };
 

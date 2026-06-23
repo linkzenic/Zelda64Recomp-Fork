@@ -3,6 +3,7 @@
 #include "recomp.h"
 #include "librecomp/overlays.hpp"
 #include "zelda_config.h"
+#include "zelda_clock_overlay.h"
 #include "recomp_input.h"
 #include "recomp_ui.h"
 #include "zelda_render.h"
@@ -153,6 +154,31 @@ extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context
 
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, zelda64::get_dpad_items_enabled());
+}
+
+extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, zelda64::get_clock_style() == zelda64::ClockStyle::Original ? 0 : 1);
+}
+
+extern "C" void recomp_set_3ds_clock_state(uint8_t* rdram, recomp_context* ctx) {
+    zelda64::set_clock_overlay_state({
+        .visible = _arg<0, s32>(rdram, ctx) != 0,
+        .alpha = _arg<1, s32>(rdram, ctx),
+        .day = _arg<2, s32>(rdram, ctx),
+        .current_time_seconds = _arg<3, s32>(rdram, ctx),
+        .time_until_crash_seconds = _arg<4, s32>(rdram, ctx),
+        .time_speed_offset = _arg<5, s32>(rdram, ctx),
+        .final_hours = _arg<6, s32>(rdram, ctx) != 0,
+    });
+}
+
+extern "C" void recomp_get_clock_texture_pack_loaded(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, zelda64::get_clock_style() == zelda64::ClockStyle::Import &&
+                          zelda64::get_clock_texture_pack_loaded());
+}
+
+extern "C" void recomp_should_use_3ds_clock_overlay(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, zelda64::get_clock_style() != zelda64::ClockStyle::Original);
 }
 
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx) {

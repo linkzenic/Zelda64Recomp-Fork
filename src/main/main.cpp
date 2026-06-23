@@ -499,6 +499,9 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_get_clock_texture_pack_loaded(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_should_use_3ds_clock_overlay(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
@@ -870,6 +873,10 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     REGISTER_FUNC(recomp_get_dpad_items_enabled);
+    REGISTER_FUNC(recomp_get_clock_style);
+    REGISTER_FUNC(recomp_get_clock_texture_pack_loaded);
+    REGISTER_FUNC(recomp_should_use_3ds_clock_overlay);
+    REGISTER_FUNC(recomp_set_3ds_clock_state);
     REGISTER_FUNC(recomp_android_should_disable_rumble);
     REGISTER_FUNC(recomp_android_should_use_sync_boot_dma);
     recompui::register_ui_exports();

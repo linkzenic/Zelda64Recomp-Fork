@@ -299,6 +299,7 @@ void Interface_DrawAButton(PlayState* play);
 void Interface_DrawBButtonIcons(PlayState* play);
 void Interface_DrawCButtonIcons(PlayState* play);
 void Interface_DrawClock(PlayState* play);
+void Recomp_Draw3DSClock(PlayState* play);
 void Interface_DrawItemButtons(PlayState* play);
 #if defined(ZELDA_ANDROID_BUILTIN_DPAD)
 void draw_dpad(PlayState* play);
@@ -686,12 +687,20 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
                                                       sMinigameCountdownTexWidths[sp2CE], 32, 0);
                 }
             } else {
-                // @recomp Use normal alignment and shift down for clock
-                gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, margin_reduction * 4, 0, margin_reduction * 4);
-                gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, margin_reduction * 4);
-                Interface_SetOrthoView(interfaceCtx);
-
-                Interface_DrawClock(play);
+                if (recomp_get_clock_style() == 1) {
+                    // The 2Ship 3DS clock uses fixed 320x240 overlay coordinates, so avoid the original-clock
+                    // viewport shift here or it can be pushed off-screen in Recomp's adjusted HUD space.
+                    gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, 0, 0, 0);
+                    gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, 0);
+                    Interface_SetOrthoView(interfaceCtx);
+                    Recomp_Draw3DSClock(play);
+                } else {
+                    // @recomp Use normal alignment and shift down for the original clock.
+                    gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, margin_reduction * 4, 0, margin_reduction * 4);
+                    gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, margin_reduction * 4);
+                    Interface_SetOrthoView(interfaceCtx);
+                    Interface_DrawClock(play);
+                }
             }
         }
         

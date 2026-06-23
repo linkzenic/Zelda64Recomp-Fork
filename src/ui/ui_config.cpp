@@ -254,6 +254,12 @@ struct ControlOptionsContext {
 
 ControlOptionsContext control_options_context;
 
+struct HudOptionsContext {
+    zelda64::ClockStyle clock_style;
+};
+
+HudOptionsContext hud_options_context;
+
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
 }
@@ -400,6 +406,17 @@ void zelda64::set_dpad_items_mode(zelda64::DpadItemsMode mode) {
 
 bool zelda64::get_dpad_items_enabled() {
     return control_options_context.dpad_items_mode == zelda64::DpadItemsMode::On;
+}
+
+zelda64::ClockStyle zelda64::get_clock_style() {
+    return hud_options_context.clock_style;
+}
+
+void zelda64::set_clock_style(zelda64::ClockStyle style) {
+    hud_options_context.clock_style = style;
+    if (graphics_model_handle) {
+        graphics_model_handle.DirtyVariable("clock_style");
+    }
 }
 
 struct SoundOptionsContext {
@@ -673,6 +690,17 @@ public:
         }();
         constructor.Bind("android_active_vulkan_driver", &android_active_vulkan_driver);
 
+        static std::string clock_texture_pack_name = [] {
+#if defined(__ANDROID__)
+            const char* pack_display_name = std::getenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME");
+            if (pack_display_name != nullptr && pack_display_name[0] != '\0') {
+                return std::string{ pack_display_name };
+            }
+#endif
+            return std::string{ "Bundled" };
+        }();
+        constructor.Bind("clock_texture_pack_name", &clock_texture_pack_name);
+
         constructor.BindEventCallback("select_gpu_driver",
             [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
                 zelda64::open_driver_file_dialog();
@@ -681,6 +709,11 @@ public:
         constructor.BindEventCallback("use_system_gpu_driver",
             [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
                 zelda64::clear_custom_driver();
+            });
+
+        constructor.BindEventCallback("select_clock_texture_pack",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::open_clock_texture_file_dialog();
             });
 
         constructor.BindFunc("res_option",
@@ -697,6 +730,16 @@ public:
         bind_option(constructor, "hr_option", &new_options.hr_option);
         bind_option(constructor, "msaa_option", &new_options.msaa_option);
         bind_option(constructor, "rr_option", &new_options.rr_option);
+        constructor.BindFunc("clock_style",
+            [](Rml::Variant& out) { get_option(hud_options_context.clock_style, out); },
+            [](const Rml::Variant& in) {
+                set_option(hud_options_context.clock_style, in);
+                recompui::request_clock_texture_reload();
+                graphics_model_handle.DirtyVariable("clock_style");
+                graphics_model_handle.DirtyVariable("options_changed");
+                graphics_model_handle.DirtyVariable("ds_info");
+            }
+        );
         constructor.BindFunc("rr_manual_value",
             [](Rml::Variant& out) {
                 out = new_options.rr_manual_value;

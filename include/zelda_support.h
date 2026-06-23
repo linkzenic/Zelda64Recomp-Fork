@@ -14,6 +14,7 @@ namespace zelda64 {
     void open_file_dialog_multiple(std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback);
     void open_driver_file_dialog();
     void clear_custom_driver();
+    void open_clock_texture_file_dialog();
     void show_error_message_box(const char *title, const char *message);
 
 // Apple specific methods that usually require Objective-C. Implemented in support_apple.mm.
