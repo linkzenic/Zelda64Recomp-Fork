@@ -6,6 +6,13 @@
 
 extern NoteSampleState gZeroedSampleState;
 extern u8 sSfxBankSizes[7];
+extern SfxBankEntry sSfxPlayerBank[9];
+extern SfxBankEntry sSfxItemBank[12];
+extern SfxBankEntry sSfxEnvironmentBank[32];
+extern SfxBankEntry sSfxEnemyBank[20];
+extern SfxBankEntry sSfxSystemBank[8];
+extern SfxBankEntry sSfxOcarinaBank[3];
+extern SfxBankEntry sSfxVoiceBank[5];
 
 #define AUDIO_DIAG_MAX_SAMPLE_DMAS 0x100
 #define AUDIO_DIAG_SFX_RM_REQ_BY_ID 5
@@ -134,6 +141,62 @@ static s32 AudioDiag_SfxBankIndexLooksValid(u8 bankId, u8 entryIndex) {
     return entryIndex == 0xFF || entryIndex < sSfxBankSizes[bankId];
 }
 
+static SfxBankEntry* AudioDiag_ExpectedSfxBank(u8 bankId) {
+    switch (bankId) {
+        case 0:
+            return sSfxPlayerBank;
+        case 1:
+            return sSfxItemBank;
+        case 2:
+            return sSfxEnvironmentBank;
+        case 3:
+            return sSfxEnemyBank;
+        case 4:
+            return sSfxSystemBank;
+        case 5:
+            return sSfxOcarinaBank;
+        case 6:
+            return sSfxVoiceBank;
+        default:
+            return NULL;
+    }
+}
+
+static u8 AudioDiag_ExpectedSfxBankSize(u8 bankId) {
+    switch (bankId) {
+        case 0:
+            return ARRAY_COUNT(sSfxPlayerBank);
+        case 1:
+            return ARRAY_COUNT(sSfxItemBank);
+        case 2:
+            return ARRAY_COUNT(sSfxEnvironmentBank);
+        case 3:
+            return ARRAY_COUNT(sSfxEnemyBank);
+        case 4:
+            return ARRAY_COUNT(sSfxSystemBank);
+        case 5:
+            return ARRAY_COUNT(sSfxOcarinaBank);
+        case 6:
+            return ARRAY_COUNT(sSfxVoiceBank);
+        default:
+            return 0;
+    }
+}
+
+static s32 AudioDiag_SfxBankPtrLooksValid(u8 bankId) {
+    SfxBankEntry* expected;
+    u8 expectedSize;
+
+    if (bankId >= ARRAY_COUNT(gSfxBanks)) {
+        return false;
+    }
+
+    expected = AudioDiag_ExpectedSfxBank(bankId);
+    expectedSize = AudioDiag_ExpectedSfxBankSize(bankId);
+
+    return expected != NULL && gSfxBanks[bankId] == expected && sSfxBankSizes[bankId] == expectedSize;
+}
+
 void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit);
 void* AudioHeap_AllocZeroedAttemptExternal(AudioAllocPool* pool, size_t size);
 void* AudioHeap_AllocDmaMemoryZeroed(AudioAllocPool* pool, size_t size);
@@ -153,14 +216,15 @@ RECOMP_PATCH void AudioSfx_StopById(u32 sfxId) {
     SfxBankEntry entryToRemove;
     s32 samsungAudioPath = recomp_android_should_use_sync_boot_dma();
 
-    if (bankId >= ARRAY_COUNT(gSfxBanks) || gSfxBanks[bankId] == NULL) {
-        if (samsungAudioPath) {
-            recomp_printf("[AudioDiag] StopById invalid bank sfx=0x%X bank=%d ptr=%p\n",
-                          sfxId, bankId, bankId < ARRAY_COUNT(gSfxBanks) ? gSfxBanks[bankId] : NULL);
-            entryToRemove.sfxId = sfxId;
-            AudioSfx_RemoveMatchingRequests(AUDIO_DIAG_SFX_RM_REQ_BY_ID, &entryToRemove);
-            return;
-        }
+    if (samsungAudioPath && !AudioDiag_SfxBankPtrLooksValid(bankId)) {
+        recomp_printf("[AudioDiag] StopById invalid bank sfx=0x%X bank=%d ptr=%p expected=%p size=%d expectedSize=%d\n",
+                      sfxId, bankId, bankId < ARRAY_COUNT(gSfxBanks) ? gSfxBanks[bankId] : NULL,
+                      AudioDiag_ExpectedSfxBank(bankId),
+                      bankId < ARRAY_COUNT(gSfxBanks) ? sSfxBankSizes[bankId] : 0,
+                      AudioDiag_ExpectedSfxBankSize(bankId));
+        entryToRemove.sfxId = sfxId;
+        AudioSfx_RemoveMatchingRequests(AUDIO_DIAG_SFX_RM_REQ_BY_ID, &entryToRemove);
+        return;
     }
 
     entryIndex = gSfxBanks[bankId][0].next;
