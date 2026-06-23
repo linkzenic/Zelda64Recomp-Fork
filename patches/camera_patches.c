@@ -32,6 +32,12 @@ RECOMP_EXPORT void recomp_set_camera_fixes(bool new_val) {
     camera_fixes = new_val;
 }
 
+static f32 recomp_get_analog_camera_distance_target(void) {
+    s32 distance = recomp_get_analog_camera_distance();
+    distance = CLAMP(distance, 100, 900);
+    return (f32)distance;
+}
+
 void update_analog_camera_params(Camera* camera) {
     // recomp_printf("Camera at: %.2f %.2f %.2f\n"
     //               "      eye: %.2f %.2f %.2f\n"
@@ -793,7 +799,7 @@ RECOMP_PATCH s32 Camera_Normal1(Camera* camera) {
 
         if (analog_cam_active) {
             spB4.pitch = analog_camera_pos.pitch;
-            // spB4.r = analog_camera_pos.r;
+            spB4.r = recomp_get_analog_camera_distance_target();
             spB4.yaw = analog_camera_pos.yaw;
         }
     }
@@ -1033,7 +1039,7 @@ RECOMP_PATCH s32 Camera_Jump2(Camera* camera) {
 
         if (analog_cam_active) {
             spB4.pitch = analog_camera_pos.pitch;
-            // spB4.r = analog_camera_pos.r;
+            spB4.r = recomp_get_analog_camera_distance_target();
             spB4.yaw = analog_camera_pos.yaw;
         }
     }
@@ -1436,7 +1442,7 @@ RECOMP_PATCH s32 Camera_Parallel1(Camera* camera) {
 
         if (analog_cam_active) {
             sp90.pitch = analog_camera_pos.pitch;
-            // sp90.r = analog_camera_pos.r;
+            sp90.r = recomp_get_analog_camera_distance_target();
             sp90.yaw = analog_camera_pos.yaw;
         }
     }
@@ -1659,7 +1665,7 @@ RECOMP_PATCH s32 Camera_Normal3(Camera* camera) {
 
         if (analog_cam_active) {
             sp80.pitch = analog_camera_pos.pitch;
-            // sp80.r = analog_camera_pos.r;
+            sp80.r = recomp_get_analog_camera_distance_target();
             sp80.yaw = analog_camera_pos.yaw;
         }
     }
@@ -1897,7 +1903,7 @@ RECOMP_PATCH s32 Camera_Jump3(Camera* camera) {
 
         if (analog_cam_active) {
             spAC.pitch = analog_camera_pos.pitch;
-            // spAC.r = analog_camera_pos.r;
+            spAC.r = recomp_get_analog_camera_distance_target();
             spAC.yaw = analog_camera_pos.yaw;
         }
     }

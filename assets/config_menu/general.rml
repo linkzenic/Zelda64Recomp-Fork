@@ -268,7 +268,7 @@
                                 data-checked="analog_cam_mode"
                                 value="On"
                                 id="analog_cam_enabled"
-                                style="nav-up: #camera_inversion_none; nav-down: #analog_camera_inversion_none"
+                                style="nav-up: #camera_inversion_none; nav-down: #analog_camera_distance_input"
                             />
                             <label class="config-option__tab-label" for="analog_cam_enabled">On</label>
 
@@ -280,61 +280,81 @@
                                 data-checked="analog_cam_mode"
                                 value="Off"
                                 id="analog_cam_disabled"
-                                style="nav-up: #camera_inversion_x; nav-down: #analog_camera_inversion_x"
+                                style="nav-up: #camera_inversion_x; nav-down: #analog_camera_distance_input"
                             />
                             <label class="config-option__tab-label" for="analog_cam_disabled">Off</label>
                         </div>
                     </div>
+
+                    <!-- analog camera distance -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)">
+                        <label class="config-option__title">Analog Camera Distance</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{analog_camera_distance}}</label>
+                            <input
+                                class="nav-vert"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(10)"
+                                id="analog_camera_distance_input"
+                                type="range"
+                                min="100"
+                                max="900"
+                                step="25"
+                                style="flex: 1; margin: 0dp; nav-up: #analog_cam_enabled; nav-down: #analog_camera_inversion_none"
+                                data-value="analog_camera_distance"
+                            />
+                        </div>
+                    </div>
                     
                     <!-- analog camera inversion -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(11)">
                         <label class="config-option__title">Analog Camera Mode</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
+                                data-event-focus="set_cur_config_index(11)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertNone"
                                 id="analog_camera_inversion_none"
-                                style="nav-up: #analog_cam_enabled;"
+                                style="nav-up: #analog_camera_distance_input;"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_none">None</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
+                                data-event-focus="set_cur_config_index(11)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertX"
                                 id="analog_camera_inversion_x"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input;"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_x">Invert X</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
+                                data-event-focus="set_cur_config_index(11)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertY"
                                 id="analog_camera_inversion_y"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input;"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_y">Invert Y</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
+                                data-event-focus="set_cur_config_index(11)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertBoth"
                                 id="analog_camera_inversion_both"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input;"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_both">Invert Both</label>
                         </div>
@@ -393,6 +413,9 @@
                         This option also enables right stick control while looking and aiming.
                     </p>
                     <p data-if="cur_config_index == 10">
+                        Maximum camera distance for analog camera.
+                    </p>
+                    <p data-if="cur_config_index == 11">
                         Inverts the camera controls for the analog camera if it's enabled. <b>None</b> is the default.
                     </p>
                 </div>

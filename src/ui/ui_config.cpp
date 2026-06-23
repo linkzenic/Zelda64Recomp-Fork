@@ -247,6 +247,7 @@ struct ControlOptionsContext {
     zelda64::AutosaveMode autosave_mode;
     zelda64::CameraInvertMode camera_invert_mode;
     zelda64::AnalogCamMode analog_cam_mode;
+    int analog_camera_distance; // 100 to 900, free camera distance in world units
     zelda64::CameraInvertMode analog_camera_invert_mode;
     zelda64::DpadItemsMode dpad_items_mode;
 };
@@ -355,6 +356,23 @@ void zelda64::set_analog_cam_mode(zelda64::AnalogCamMode mode) {
     control_options_context.analog_cam_mode = mode;
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_mode");
+    }
+}
+
+int zelda64::get_analog_camera_distance() {
+    return control_options_context.analog_camera_distance;
+}
+
+void zelda64::set_analog_camera_distance(int distance) {
+    if (distance < 100) {
+        distance = 100;
+    } else if (distance > 900) {
+        distance = 900;
+    }
+
+    control_options_context.analog_camera_distance = distance;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("analog_camera_distance");
     }
 }
 
@@ -995,6 +1013,7 @@ public:
         constructor.Bind("gyro_sensitivity", &control_options_context.gyro_sensitivity);
         constructor.Bind("mouse_sensitivity", &control_options_context.mouse_sensitivity);
         constructor.Bind("joystick_deadzone", &control_options_context.joystick_deadzone);
+        constructor.Bind("analog_camera_distance", &control_options_context.analog_camera_distance);
         bind_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
         bind_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
         bind_option(constructor, "autosave_mode", &control_options_context.autosave_mode);

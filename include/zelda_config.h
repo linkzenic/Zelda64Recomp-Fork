@@ -87,6 +87,9 @@ namespace zelda64 {
     AnalogCamMode get_analog_cam_mode();
     void set_analog_cam_mode(AnalogCamMode mode);
 
+    int get_analog_camera_distance();
+    void set_analog_camera_distance(int distance);
+
     enum class DpadItemsMode {
         On,
         Off,

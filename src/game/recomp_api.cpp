@@ -147,6 +147,10 @@ extern "C" void recomp_get_analog_cam_enabled(uint8_t* rdram, recomp_context* ct
     _return<s32>(ctx, zelda64::get_analog_cam_mode() == zelda64::AnalogCamMode::On);
 }
 
+extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, zelda64::get_analog_camera_distance());
+}
+
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, zelda64::get_dpad_items_enabled());
 }

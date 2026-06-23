@@ -754,6 +754,11 @@ scrollbarhorizontal sliderbar {
   text-align: left;
 }
 
+.config__hz-wrapper > .config__wrapper {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
 .config__header, .config__footer {
   display: flex;
   align-items: center;

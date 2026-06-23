@@ -499,6 +499,7 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
@@ -859,6 +860,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_target_framerate);
     REGISTER_FUNC(recomp_get_autosave_enabled);
     REGISTER_FUNC(recomp_get_analog_cam_enabled);
+    REGISTER_FUNC(recomp_get_analog_camera_distance);
     REGISTER_FUNC(recomp_get_camera_inputs);
     REGISTER_FUNC(recomp_get_targeting_mode);
     REGISTER_FUNC(recomp_get_bgm_volume);
