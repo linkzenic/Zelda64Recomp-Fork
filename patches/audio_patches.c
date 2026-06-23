@@ -1,11 +1,15 @@
 #include "patches.h"
 #include "audio/heap.h"
+#include "audio/load.h"
 #include "input.h"
 
 extern NoteSampleState gZeroedSampleState;
 
+#define AUDIO_DIAG_MAX_SAMPLE_DMAS 0x100
+
 static s32 AudioDiag_LogAllocCount = 0;
 static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
+static SampleDma sAudioDiagSampleDmas[AUDIO_DIAG_MAX_SAMPLE_DMAS] = { { (u8*)1, 0, 0, 0, 0, 0, 0 } };
 
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
@@ -249,4 +253,102 @@ RECOMP_PATCH void AudioPlayback_NoteInitAll(void) {
 
     recomp_printf("[AudioDiag] NoteInitAll end miscCur=%p miscCount=%d\n", gAudioCtx.miscPool.curAddr,
                   gAudioCtx.miscPool.count);
+}
+
+RECOMP_PATCH void AudioLoad_InitSampleDmaBuffers(s32 numNotes) {
+    SampleDma* dma;
+    size_t sampleDmasBytes;
+    s32 totalSampleDmas;
+    s32 i;
+    s32 t2;
+    s32 j;
+
+    gAudioCtx.sampleDmaBufSize = gAudioCtx.sampleDmaBufSize1;
+    totalSampleDmas = 4 * gAudioCtx.numNotes * gAudioCtx.audioBufferParameters.specUnk4;
+    sampleDmasBytes = totalSampleDmas * sizeof(SampleDma);
+    gAudioCtx.sampleDmas = AudioHeap_Alloc(&gAudioCtx.miscPool, sampleDmasBytes);
+
+    if (!AudioDiag_PtrInPool(gAudioCtx.sampleDmas, sampleDmasBytes, &gAudioCtx.miscPool)) {
+        if (recomp_android_should_use_sync_boot_dma() && totalSampleDmas <= AUDIO_DIAG_MAX_SAMPLE_DMAS) {
+            recomp_printf("[AudioDiag] Using static sample DMA table old=%p static=%p count=%d bytes=%d miscStart=%p miscCur=%p miscSize=%d\n",
+                          gAudioCtx.sampleDmas, sAudioDiagSampleDmas, totalSampleDmas, sampleDmasBytes,
+                          gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size);
+            bzero(sAudioDiagSampleDmas, sizeof(sAudioDiagSampleDmas));
+            gAudioCtx.sampleDmas = sAudioDiagSampleDmas;
+        } else {
+            recomp_printf("[AudioDiag] Sample DMA table allocation invalid ptr=%p count=%d bytes=%d miscStart=%p miscCur=%p miscSize=%d\n",
+                          gAudioCtx.sampleDmas, totalSampleDmas, sampleDmasBytes, gAudioCtx.miscPool.startAddr,
+                          gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size);
+            gAudioCtx.sampleDmaCount = 0;
+            gAudioCtx.sampleDmaListSize1 = 0;
+            gAudioCtx.sampleDmaReuseQueue1RdPos = 0;
+            gAudioCtx.sampleDmaReuseQueue1WrPos = 0;
+            gAudioCtx.sampleDmaReuseQueue2RdPos = 0;
+            gAudioCtx.sampleDmaReuseQueue2WrPos = 0;
+            return;
+        }
+    }
+
+    t2 = 3 * gAudioCtx.numNotes * gAudioCtx.audioBufferParameters.specUnk4;
+
+    for (i = 0; i < t2 && gAudioCtx.sampleDmaCount < AUDIO_DIAG_MAX_SAMPLE_DMAS; i++) {
+        dma = &gAudioCtx.sampleDmas[gAudioCtx.sampleDmaCount];
+        dma->ramAddr = AudioHeap_AllocAttemptExternal(&gAudioCtx.miscPool, gAudioCtx.sampleDmaBufSize);
+        if (dma->ramAddr == NULL) {
+            break;
+        }
+
+        AudioHeap_WritebackDCache(dma->ramAddr, gAudioCtx.sampleDmaBufSize);
+        dma->size = gAudioCtx.sampleDmaBufSize;
+        dma->devAddr = 0;
+        dma->sizeUnused = 0;
+        dma->unused = 0;
+        dma->ttl = 0;
+        gAudioCtx.sampleDmaCount++;
+    }
+
+    for (i = 0; (u32)i < gAudioCtx.sampleDmaCount; i++) {
+        gAudioCtx.sampleDmaReuseQueue1[i] = i;
+        gAudioCtx.sampleDmas[i].reuseIndex = i;
+    }
+
+    for (i = gAudioCtx.sampleDmaCount; i < AUDIO_DIAG_MAX_SAMPLE_DMAS; i++) {
+        gAudioCtx.sampleDmaReuseQueue1[i] = 0;
+    }
+
+    gAudioCtx.sampleDmaReuseQueue1RdPos = 0;
+    gAudioCtx.sampleDmaReuseQueue1WrPos = gAudioCtx.sampleDmaCount;
+    gAudioCtx.sampleDmaListSize1 = gAudioCtx.sampleDmaCount;
+    gAudioCtx.sampleDmaBufSize = gAudioCtx.sampleDmaBufSize2;
+
+    for (j = 0; j < gAudioCtx.numNotes && gAudioCtx.sampleDmaCount < AUDIO_DIAG_MAX_SAMPLE_DMAS; j++) {
+        dma = &gAudioCtx.sampleDmas[gAudioCtx.sampleDmaCount];
+        dma->ramAddr = AudioHeap_AllocAttemptExternal(&gAudioCtx.miscPool, gAudioCtx.sampleDmaBufSize);
+        if (dma->ramAddr == NULL) {
+            break;
+        }
+
+        AudioHeap_WritebackDCache(dma->ramAddr, gAudioCtx.sampleDmaBufSize);
+        dma->size = gAudioCtx.sampleDmaBufSize;
+        dma->devAddr = 0;
+        dma->sizeUnused = 0;
+        dma->unused = 0;
+        dma->ttl = 0;
+        gAudioCtx.sampleDmaCount++;
+    }
+
+    for (i = gAudioCtx.sampleDmaListSize1; (u32)i < gAudioCtx.sampleDmaCount; i++) {
+        gAudioCtx.sampleDmaReuseQueue2[i - gAudioCtx.sampleDmaListSize1] = i;
+        gAudioCtx.sampleDmas[i].reuseIndex = i - gAudioCtx.sampleDmaListSize1;
+    }
+
+    for (i = gAudioCtx.sampleDmaCount; i < AUDIO_DIAG_MAX_SAMPLE_DMAS; i++) {
+        gAudioCtx.sampleDmaReuseQueue2[i] = gAudioCtx.sampleDmaListSize1;
+    }
+
+    gAudioCtx.sampleDmaReuseQueue2RdPos = 0;
+    gAudioCtx.sampleDmaReuseQueue2WrPos = gAudioCtx.sampleDmaCount - gAudioCtx.sampleDmaListSize1;
+    recomp_printf("[AudioDiag] Sample DMA init count=%d list1=%d buf1=%d buf2=%d table=%p\n",
+                  gAudioCtx.sampleDmaCount, gAudioCtx.sampleDmaListSize1, gAudioCtx.sampleDmaBufSize1,
+                  gAudioCtx.sampleDmaBufSize2, gAudioCtx.sampleDmas);
 }
