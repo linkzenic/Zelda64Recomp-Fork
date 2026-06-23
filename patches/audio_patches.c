@@ -27,6 +27,11 @@ static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     return value >= start && value <= end && size <= (end - value);
 }
 
+static s32 AudioDiag_PtrInAudioPool(void* ptr, size_t size) {
+    return AudioDiag_PtrInPool(ptr, size, &gAudioCtx.miscPool) ||
+           AudioDiag_PtrInPool(ptr, size, &gAudioCtx.externalPool);
+}
+
 static s32 AudioDiag_PoolLooksValid(AudioAllocPool* pool) {
     uintptr_t start;
     uintptr_t cur;
@@ -46,6 +51,11 @@ static s32 AudioDiag_PoolLooksValid(AudioAllocPool* pool) {
 
     return true;
 }
+
+void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit);
+void* AudioHeap_AllocZeroedAttemptExternal(AudioAllocPool* pool, size_t size);
+void* AudioHeap_AllocDmaMemoryZeroed(AudioAllocPool* pool, size_t size);
+void AudioHeap_LoadLowPassFilter(s16* filter, s32 cutoff);
 
 RECOMP_PATCH void AudioHeap_InitPool(AudioAllocPool* pool, void* addr, size_t size) {
     uintptr_t alignedAddr = ALIGN16((uintptr_t)addr);
@@ -253,6 +263,278 @@ RECOMP_PATCH void AudioPlayback_NoteInitAll(void) {
 
     recomp_printf("[AudioDiag] NoteInitAll end miscCur=%p miscCount=%d\n", gAudioCtx.miscPool.curAddr,
                   gAudioCtx.miscPool.count);
+}
+
+static void AudioDiag_DisableReverb(SynthesisReverb* reverb, s32 reverbIndex, const char* reason) {
+    recomp_printf("[AudioDiag] Disable reverb index=%d reason=%s delay=%d left=%p right=%p miscStart=%p miscCur=%p miscSize=%d externalStart=%p externalCur=%p externalSize=%d\n",
+                  reverbIndex, reason, reverb != NULL ? reverb->delayNumSamples : 0,
+                  reverb != NULL ? reverb->leftReverbBuf : NULL,
+                  reverb != NULL ? reverb->rightReverbBuf : NULL,
+                  gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size,
+                  gAudioCtx.externalPool.startAddr, gAudioCtx.externalPool.curAddr, gAudioCtx.externalPool.size);
+
+    if (reverb == NULL) {
+        return;
+    }
+
+    reverb->useReverb = 0;
+    reverb->leftReverbBuf = NULL;
+    reverb->rightReverbBuf = NULL;
+    reverb->sample.sampleAddr = NULL;
+    reverb->filterLeft = NULL;
+    reverb->filterRight = NULL;
+}
+
+RECOMP_PATCH void AudioHeap_SetReverbData(s32 reverbIndex, u32 dataType, s32 data, s32 isFirstInit) {
+    s32 delayNumSamples;
+    SynthesisReverb* reverb;
+    size_t filterStateSize;
+
+    if (reverbIndex < 0 || reverbIndex >= ARRAY_COUNT(gAudioCtx.synthesisReverbs)) {
+        recomp_printf("[AudioDiag] SetReverbData invalid index=%d type=%d data=%d first=%d\n",
+                      reverbIndex, dataType, data, isFirstInit);
+        return;
+    }
+
+    reverb = &gAudioCtx.synthesisReverbs[reverbIndex];
+
+    switch (dataType) {
+        case REVERB_DATA_TYPE_SETTINGS:
+            AudioHeap_InitReverb(reverbIndex, (ReverbSettings*)data, false);
+            break;
+
+        case REVERB_DATA_TYPE_DELAY:
+            if (reverb->downsampleRate == 0) {
+                recomp_printf("[AudioDiag] Reverb delay had zero downsample index=%d data=%d\n", reverbIndex, data);
+                reverb->downsampleRate = 1;
+            }
+
+            if (data < 4) {
+                data = 4;
+            }
+
+            delayNumSamples = data * 64;
+            if (delayNumSamples < (16 * SAMPLES_PER_FRAME)) {
+                delayNumSamples = 16 * SAMPLES_PER_FRAME;
+            }
+
+            delayNumSamples /= reverb->downsampleRate;
+
+            if (!isFirstInit) {
+                if (reverb->delayNumSamplesAfterDownsampling < (data / reverb->downsampleRate)) {
+                    break;
+                }
+                if ((reverb->nextReverbBufPos >= delayNumSamples) || (reverb->delayNumSamplesUnk >= delayNumSamples)) {
+                    reverb->nextReverbBufPos = 0;
+                    reverb->delayNumSamplesUnk = 0;
+                }
+            }
+
+            reverb->delayNumSamples = delayNumSamples;
+
+            if ((reverb->downsampleRate != 1) || reverb->resampleEffectOn) {
+                reverb->downsamplePitch = 0x8000 / reverb->downsampleRate;
+                if (reverb->leftLoadResampleBuf == NULL) {
+                    reverb->leftLoadResampleBuf = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, sizeof(RESAMPLE_STATE));
+                    reverb->rightLoadResampleBuf = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, sizeof(RESAMPLE_STATE));
+                    reverb->leftSaveResampleBuf = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, sizeof(RESAMPLE_STATE));
+                    reverb->rightSaveResampleBuf = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, sizeof(RESAMPLE_STATE));
+                    if (!AudioDiag_PtrInPool(reverb->leftLoadResampleBuf, sizeof(RESAMPLE_STATE), &gAudioCtx.miscPool) ||
+                        !AudioDiag_PtrInPool(reverb->rightLoadResampleBuf, sizeof(RESAMPLE_STATE), &gAudioCtx.miscPool) ||
+                        !AudioDiag_PtrInPool(reverb->leftSaveResampleBuf, sizeof(RESAMPLE_STATE), &gAudioCtx.miscPool) ||
+                        !AudioDiag_PtrInPool(reverb->rightSaveResampleBuf, sizeof(RESAMPLE_STATE), &gAudioCtx.miscPool)) {
+                        recomp_printf("[AudioDiag] Reverb resample alloc invalid index=%d leftLoad=%p rightLoad=%p leftSave=%p rightSave=%p miscStart=%p miscCur=%p miscSize=%d\n",
+                                      reverbIndex, reverb->leftLoadResampleBuf, reverb->rightLoadResampleBuf,
+                                      reverb->leftSaveResampleBuf, reverb->rightSaveResampleBuf,
+                                      gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size);
+                        reverb->leftLoadResampleBuf = NULL;
+                        reverb->rightLoadResampleBuf = NULL;
+                        reverb->leftSaveResampleBuf = NULL;
+                        reverb->rightSaveResampleBuf = NULL;
+                        reverb->downsampleRate = 1;
+                    }
+                }
+            }
+            break;
+
+        case REVERB_DATA_TYPE_DECAY:
+            reverb->decayRatio = data;
+            break;
+
+        case REVERB_DATA_TYPE_SUB_VOLUME:
+            reverb->subVolume = data;
+            break;
+
+        case REVERB_DATA_TYPE_VOLUME:
+            reverb->volume = data;
+            break;
+
+        case REVERB_DATA_TYPE_LEAK_RIGHT:
+            reverb->leakRtl = data;
+            break;
+
+        case REVERB_DATA_TYPE_LEAK_LEFT:
+            reverb->leakLtr = data;
+            break;
+
+        case REVERB_DATA_TYPE_FILTER_LEFT:
+            if (data != 0) {
+                if (isFirstInit || (reverb->filterLeftInit == NULL)) {
+                    filterStateSize = 2 * (FILTER_BUF_PART1 + FILTER_BUF_PART2);
+                    reverb->filterLeftState = AudioHeap_AllocDmaMemoryZeroed(&gAudioCtx.miscPool, filterStateSize);
+                    reverb->filterLeftInit = AudioHeap_AllocDmaMemory(&gAudioCtx.miscPool, FILTER_SIZE);
+                    if (!AudioDiag_PtrInPool(reverb->filterLeftState, filterStateSize, &gAudioCtx.miscPool) ||
+                        !AudioDiag_PtrInPool(reverb->filterLeftInit, FILTER_SIZE, &gAudioCtx.miscPool)) {
+                        recomp_printf("[AudioDiag] Reverb left filter alloc invalid index=%d state=%p init=%p miscStart=%p miscCur=%p miscSize=%d\n",
+                                      reverbIndex, reverb->filterLeftState, reverb->filterLeftInit,
+                                      gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size);
+                        reverb->filterLeftState = NULL;
+                        reverb->filterLeftInit = NULL;
+                    }
+                }
+
+                reverb->filterLeft = reverb->filterLeftInit;
+                if (reverb->filterLeft != NULL) {
+                    AudioHeap_LoadLowPassFilter(reverb->filterLeft, data);
+                }
+            } else {
+                reverb->filterLeft = NULL;
+
+                if (isFirstInit) {
+                    reverb->filterLeftInit = NULL;
+                }
+            }
+            break;
+
+        case REVERB_DATA_TYPE_FILTER_RIGHT:
+            if (data != 0) {
+                if (isFirstInit || (reverb->filterRightInit == NULL)) {
+                    filterStateSize = 2 * (FILTER_BUF_PART1 + FILTER_BUF_PART2);
+                    reverb->filterRightState = AudioHeap_AllocDmaMemoryZeroed(&gAudioCtx.miscPool, filterStateSize);
+                    reverb->filterRightInit = AudioHeap_AllocDmaMemory(&gAudioCtx.miscPool, FILTER_SIZE);
+                    if (!AudioDiag_PtrInPool(reverb->filterRightState, filterStateSize, &gAudioCtx.miscPool) ||
+                        !AudioDiag_PtrInPool(reverb->filterRightInit, FILTER_SIZE, &gAudioCtx.miscPool)) {
+                        recomp_printf("[AudioDiag] Reverb right filter alloc invalid index=%d state=%p init=%p miscStart=%p miscCur=%p miscSize=%d\n",
+                                      reverbIndex, reverb->filterRightState, reverb->filterRightInit,
+                                      gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size);
+                        reverb->filterRightState = NULL;
+                        reverb->filterRightInit = NULL;
+                    }
+                }
+
+                reverb->filterRight = reverb->filterRightInit;
+                if (reverb->filterRight != NULL) {
+                    AudioHeap_LoadLowPassFilter(reverb->filterRight, data);
+                }
+            } else {
+                reverb->filterRight = NULL;
+                if (isFirstInit) {
+                    reverb->filterRightInit = NULL;
+                }
+            }
+            break;
+
+        case REVERB_DATA_TYPE_9:
+            reverb->resampleEffectExtraSamples = data;
+            reverb->resampleEffectOn = data != 0;
+            break;
+
+        default:
+            break;
+    }
+}
+
+RECOMP_PATCH void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit) {
+    SynthesisReverb* reverb;
+    size_t reverbBufferSize;
+
+    if (reverbIndex < 0 || reverbIndex >= ARRAY_COUNT(gAudioCtx.synthesisReverbs)) {
+        recomp_printf("[AudioDiag] InitReverb invalid index=%d settings=%p first=%d\n",
+                      reverbIndex, settings, isFirstInit);
+        return;
+    }
+
+    reverb = &gAudioCtx.synthesisReverbs[reverbIndex];
+
+    if (settings == NULL || settings->downsampleRate == 0) {
+        AudioDiag_DisableReverb(reverb, reverbIndex, "invalid settings");
+        return;
+    }
+
+    recomp_printf("[AudioDiag] InitReverb begin index=%d first=%d settings=%p delaySetting=%d downsample=%d numReverbs=%d miscStart=%p miscCur=%p miscSize=%d\n",
+                  reverbIndex, isFirstInit, settings, settings->delayNumSamples, settings->downsampleRate,
+                  gAudioCtx.numSynthesisReverbs, gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr,
+                  gAudioCtx.miscPool.size);
+
+    if (isFirstInit) {
+        reverb->delayNumSamplesAfterDownsampling = settings->delayNumSamples / settings->downsampleRate;
+        reverb->leftLoadResampleBuf = NULL;
+    } else if (reverb->delayNumSamplesAfterDownsampling < (settings->delayNumSamples / settings->downsampleRate)) {
+        return;
+    }
+
+    reverb->downsampleRate = settings->downsampleRate;
+    reverb->resampleEffectOn = false;
+    reverb->resampleEffectExtraSamples = 0;
+    reverb->resampleEffectLoadUnk = 0;
+    reverb->resampleEffectSaveUnk = 0;
+    AudioHeap_SetReverbData(reverbIndex, REVERB_DATA_TYPE_DELAY, settings->delayNumSamples, isFirstInit);
+
+    if (reverb->delayNumSamples <= 0) {
+        AudioDiag_DisableReverb(reverb, reverbIndex, "invalid delay");
+        return;
+    }
+
+    reverb->decayRatio = settings->decayRatio;
+    reverb->volume = settings->volume;
+    reverb->subDelay = settings->subDelay * 64;
+    reverb->subVolume = settings->subVolume;
+    reverb->leakRtl = settings->leakRtl;
+    reverb->leakLtr = settings->leakLtr;
+    reverb->mixReverbIndex = settings->mixReverbIndex;
+    reverb->mixReverbStrength = settings->mixReverbStrength;
+    reverb->useReverb = 8;
+
+    if (isFirstInit) {
+        reverbBufferSize = reverb->delayNumSamples * 2;
+        reverb->leftReverbBuf = AudioHeap_AllocZeroedAttemptExternal(&gAudioCtx.miscPool, reverbBufferSize);
+        reverb->rightReverbBuf = AudioHeap_AllocZeroedAttemptExternal(&gAudioCtx.miscPool, reverbBufferSize);
+
+        if (!AudioDiag_PtrInAudioPool(reverb->leftReverbBuf, reverbBufferSize) ||
+            !AudioDiag_PtrInAudioPool(reverb->rightReverbBuf, reverbBufferSize)) {
+            recomp_printf("[AudioDiag] Reverb buffer alloc invalid index=%d bytes=%d left=%p right=%p miscStart=%p miscCur=%p miscSize=%d externalStart=%p externalCur=%p externalSize=%d\n",
+                          reverbIndex, reverbBufferSize, reverb->leftReverbBuf, reverb->rightReverbBuf,
+                          gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size,
+                          gAudioCtx.externalPool.startAddr, gAudioCtx.externalPool.curAddr, gAudioCtx.externalPool.size);
+            AudioDiag_DisableReverb(reverb, reverbIndex, "buffer allocation");
+            return;
+        }
+
+        reverb->resampleFlags = 1;
+        reverb->nextReverbBufPos = 0;
+        reverb->delayNumSamplesUnk = 0;
+        reverb->curFrame = 0;
+        reverb->framesToIgnore = 2;
+    }
+
+    reverb->tunedSample.sample = &reverb->sample;
+    reverb->sample.loop = &reverb->loop;
+    reverb->tunedSample.tuning = 1.0f;
+    reverb->sample.codec = CODEC_REVERB;
+    reverb->sample.medium = MEDIUM_RAM;
+    reverb->sample.size = reverb->delayNumSamples * SAMPLE_SIZE;
+    reverb->sample.sampleAddr = (u8*)reverb->leftReverbBuf;
+    reverb->loop.start = 0;
+    reverb->loop.count = 1;
+    reverb->loop.loopEnd = reverb->delayNumSamples;
+
+    AudioHeap_SetReverbData(reverbIndex, REVERB_DATA_TYPE_FILTER_LEFT, settings->lowPassFilterCutoffLeft, isFirstInit);
+    AudioHeap_SetReverbData(reverbIndex, REVERB_DATA_TYPE_FILTER_RIGHT, settings->lowPassFilterCutoffRight,
+                            isFirstInit);
+
+    recomp_printf("[AudioDiag] InitReverb end index=%d use=%d delay=%d left=%p right=%p filterL=%p filterR=%p miscCur=%p\n",
+                  reverbIndex, reverb->useReverb, reverb->delayNumSamples, reverb->leftReverbBuf,
+                  reverb->rightReverbBuf, reverb->filterLeft, reverb->filterRight, gAudioCtx.miscPool.curAddr);
 }
 
 RECOMP_PATCH void AudioLoad_InitSampleDmaBuffers(s32 numNotes) {
