@@ -2,10 +2,13 @@
 #include "audio/heap.h"
 #include "audio/load.h"
 #include "input.h"
+#include "sfx.h"
 
 extern NoteSampleState gZeroedSampleState;
+extern u8 sSfxBankSizes[7];
 
 #define AUDIO_DIAG_MAX_SAMPLE_DMAS 0x100
+#define AUDIO_DIAG_SFX_RM_REQ_BY_ID 5
 
 static s32 AudioDiag_LogAllocCount = 0;
 static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
@@ -127,6 +130,10 @@ static s32 AudioDiag_ReverbSettingsValuesLookValid(ReverbSettings* settings, s32
     return true;
 }
 
+static s32 AudioDiag_SfxBankIndexLooksValid(u8 bankId, u8 entryIndex) {
+    return entryIndex == 0xFF || entryIndex < sSfxBankSizes[bankId];
+}
+
 void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit);
 void* AudioHeap_AllocZeroedAttemptExternal(AudioAllocPool* pool, size_t size);
 void* AudioHeap_AllocDmaMemoryZeroed(AudioAllocPool* pool, size_t size);
@@ -134,6 +141,73 @@ void AudioHeap_LoadLowPassFilter(s16* filter, s32 cutoff);
 void AudioHeap_DiscardSampleCacheEntry(SampleCacheEntry* entry);
 void AudioHeap_DiscardSequence(s32 seqId);
 void AudioHeap_DiscardSampleBank(s32 sampleBankId);
+void AudioSfx_RemoveBankEntry(u8 bankId, u8 entryIndex);
+void AudioSfx_RemoveMatchingRequests(u8 aspect, SfxBankEntry* entry);
+
+RECOMP_PATCH void AudioSfx_StopById(u32 sfxId) {
+    SfxBankEntry* entry;
+    u8 bankId = SFX_BANK(sfxId);
+    u8 entryIndex;
+    u8 prevEntryIndex = 0;
+    u8 iterations = 0;
+    SfxBankEntry entryToRemove;
+    s32 samsungAudioPath = recomp_android_should_use_sync_boot_dma();
+
+    if (bankId >= ARRAY_COUNT(gSfxBanks) || gSfxBanks[bankId] == NULL) {
+        if (samsungAudioPath) {
+            recomp_printf("[AudioDiag] StopById invalid bank sfx=0x%X bank=%d ptr=%p\n",
+                          sfxId, bankId, bankId < ARRAY_COUNT(gSfxBanks) ? gSfxBanks[bankId] : NULL);
+            entryToRemove.sfxId = sfxId;
+            AudioSfx_RemoveMatchingRequests(AUDIO_DIAG_SFX_RM_REQ_BY_ID, &entryToRemove);
+            return;
+        }
+    }
+
+    entryIndex = gSfxBanks[bankId][0].next;
+
+    if (samsungAudioPath && !AudioDiag_SfxBankIndexLooksValid(bankId, entryIndex)) {
+        recomp_printf("[AudioDiag] StopById invalid head sfx=0x%X bank=%d head=%d size=%d\n",
+                      sfxId, bankId, entryIndex, sSfxBankSizes[bankId]);
+        entryToRemove.sfxId = sfxId;
+        AudioSfx_RemoveMatchingRequests(AUDIO_DIAG_SFX_RM_REQ_BY_ID, &entryToRemove);
+        return;
+    }
+
+    while (entryIndex != 0xFF) {
+        if (samsungAudioPath) {
+            if (!AudioDiag_SfxBankIndexLooksValid(bankId, entryIndex) ||
+                !AudioDiag_SfxBankIndexLooksValid(bankId, prevEntryIndex) ||
+                iterations++ >= sSfxBankSizes[bankId]) {
+                recomp_printf("[AudioDiag] StopById invalid walk sfx=0x%X bank=%d entry=%d prev=%d iter=%d size=%d\n",
+                              sfxId, bankId, entryIndex, prevEntryIndex, iterations, sSfxBankSizes[bankId]);
+                break;
+            }
+        }
+
+        entry = &gSfxBanks[bankId][entryIndex];
+        if (entry->sfxId == sfxId) {
+            if (entry->state >= SFX_STATE_PLAYING_REFRESH) {
+                AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, entry->channelIndex, 0, 0);
+            }
+            if (entry->state != SFX_STATE_EMPTY) {
+                AudioSfx_RemoveBankEntry(bankId, entryIndex);
+            }
+        } else {
+            prevEntryIndex = entryIndex;
+        }
+
+        if (samsungAudioPath && !AudioDiag_SfxBankIndexLooksValid(bankId, prevEntryIndex)) {
+            recomp_printf("[AudioDiag] StopById invalid prev after remove sfx=0x%X bank=%d prev=%d size=%d\n",
+                          sfxId, bankId, prevEntryIndex, sSfxBankSizes[bankId]);
+            break;
+        }
+
+        entryIndex = gSfxBanks[bankId][prevEntryIndex].next;
+    }
+
+    entryToRemove.sfxId = sfxId;
+    AudioSfx_RemoveMatchingRequests(AUDIO_DIAG_SFX_RM_REQ_BY_ID, &entryToRemove);
+}
 
 RECOMP_PATCH void AudioHeap_InitPool(AudioAllocPool* pool, void* addr, size_t size) {
     uintptr_t alignedAddr = ALIGN16((uintptr_t)addr);
