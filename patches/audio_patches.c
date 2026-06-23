@@ -3,6 +3,8 @@
 
 extern NoteSampleState gZeroedSampleState;
 
+static s32 AudioDiag_LogAllocCount = 0;
+
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
     uintptr_t end;
@@ -17,6 +19,103 @@ static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     value = (uintptr_t)ptr;
 
     return value >= start && value <= end && size <= (end - value);
+}
+
+static s32 AudioDiag_PoolLooksValid(AudioAllocPool* pool) {
+    uintptr_t start;
+    uintptr_t cur;
+    uintptr_t end;
+
+    if (pool == NULL || pool->startAddr == NULL || pool->curAddr == NULL) {
+        return false;
+    }
+
+    start = (uintptr_t)pool->startAddr;
+    cur = (uintptr_t)pool->curAddr;
+    end = start + pool->size;
+
+    if (end < start || cur < start || cur > end) {
+        return false;
+    }
+
+    return true;
+}
+
+RECOMP_PATCH void AudioHeap_InitPool(AudioAllocPool* pool, void* addr, size_t size) {
+    uintptr_t alignedAddr = ALIGN16((uintptr_t)addr);
+    size_t alignmentLoss = (uintptr_t)addr & 0xF;
+
+    pool->curAddr = pool->startAddr = (u8*)alignedAddr;
+    pool->size = size > alignmentLoss ? size - alignmentLoss : 0;
+    pool->count = 0;
+
+    if (AudioDiag_LogAllocCount < 16) {
+        recomp_printf("[AudioDiag] InitPool pool=%p addr=%p aligned=%p size=%d storedSize=%d\n",
+                      pool, addr, pool->startAddr, size, pool->size);
+    }
+}
+
+RECOMP_PATCH void* AudioHeap_Alloc(AudioAllocPool* pool, size_t size) {
+    size_t alignedSize = ALIGN16(size);
+    u8* curAddr;
+    uintptr_t cur;
+    uintptr_t end;
+
+    if (!AudioDiag_PoolLooksValid(pool)) {
+        recomp_printf("[AudioDiag] Alloc invalid pool=%p start=%p cur=%p size=%d count=%d request=%d\n",
+                      pool, pool != NULL ? pool->startAddr : NULL, pool != NULL ? pool->curAddr : NULL,
+                      pool != NULL ? pool->size : 0, pool != NULL ? pool->count : 0, size);
+        return NULL;
+    }
+
+    curAddr = pool->curAddr;
+    cur = (uintptr_t)pool->curAddr;
+    end = (uintptr_t)pool->startAddr + pool->size;
+
+    if (alignedSize > (end - cur)) {
+        recomp_printf("[AudioDiag] Alloc failed pool=%p start=%p cur=%p end=%p size=%d aligned=%d count=%d\n",
+                      pool, pool->startAddr, pool->curAddr, (void*)end, size, alignedSize, pool->count);
+        return NULL;
+    }
+
+    pool->curAddr += alignedSize;
+    pool->count++;
+
+    if (AudioDiag_LogAllocCount < 16) {
+        recomp_printf("[AudioDiag] Alloc ok pool=%p addr=%p newCur=%p size=%d aligned=%d count=%d\n",
+                      pool, curAddr, pool->curAddr, size, alignedSize, pool->count);
+        AudioDiag_LogAllocCount++;
+    }
+
+    return curAddr;
+}
+
+RECOMP_PATCH void* AudioHeap_AllocZeroed(AudioAllocPool* pool, size_t size) {
+    u8* addr = AudioHeap_Alloc(pool, size);
+    uintptr_t zeroStart;
+    uintptr_t zeroEnd;
+
+    if (addr == NULL) {
+        return NULL;
+    }
+
+    if (!AudioDiag_PoolLooksValid(pool)) {
+        recomp_printf("[AudioDiag] AllocZeroed invalid after alloc pool=%p addr=%p start=%p cur=%p size=%d count=%d request=%d\n",
+                      pool, addr, pool != NULL ? pool->startAddr : NULL, pool != NULL ? pool->curAddr : NULL,
+                      pool != NULL ? pool->size : 0, pool != NULL ? pool->count : 0, size);
+        return NULL;
+    }
+
+    zeroStart = (uintptr_t)addr;
+    zeroEnd = (uintptr_t)pool->curAddr;
+    if (zeroEnd < zeroStart || !AudioDiag_PtrInPool(addr, zeroEnd - zeroStart, pool)) {
+        recomp_printf("[AudioDiag] AllocZeroed invalid span pool=%p addr=%p cur=%p start=%p poolSize=%d request=%d\n",
+                      pool, addr, pool->curAddr, pool->startAddr, pool->size, size);
+        return NULL;
+    }
+
+    bzero(addr, zeroEnd - zeroStart);
+    return addr;
 }
 
 RECOMP_PATCH void AudioPlayback_InitNoteFreeList(void) {
