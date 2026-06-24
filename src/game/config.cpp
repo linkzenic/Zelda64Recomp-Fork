@@ -253,6 +253,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["analog_camera_distance"] = zelda64::get_analog_camera_distance();
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
     config_json["dpad_items_mode"] = zelda64::get_dpad_items_mode();
+    config_json["advanced_settings_mode"] = zelda64::get_advanced_settings_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
 
     return save_json_with_backups(path, config_json);
@@ -271,6 +272,7 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     zelda64::set_analog_camera_distance(from_or_default(config_json, "analog_camera_distance", 185));
     zelda64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", zelda64::CameraInvertMode::InvertNone));
     zelda64::set_dpad_items_mode(from_or_default(config_json, "dpad_items_mode", zelda64::DpadItemsMode::On));
+    zelda64::set_advanced_settings_mode(from_or_default(config_json, "advanced_settings_mode", zelda64::AdvancedSettingsMode::Off));
     zelda64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
 

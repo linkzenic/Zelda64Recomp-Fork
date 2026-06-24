@@ -196,6 +196,9 @@ namespace recompui {
     }
     void Slider::set_min_value(double v) {
         min_value = v;
+        if (max_value != min_value) {
+            update_circle_position();
+        }
     }
 
     double Slider::get_min_value() const {
@@ -204,6 +207,9 @@ namespace recompui {
 
     void Slider::set_max_value(double v) {
         max_value = v;
+        if (max_value != min_value) {
+            update_circle_position();
+        }
     }
 
     double Slider::get_max_value() const {

@@ -364,7 +364,7 @@ input.checkbox {
 }
 
 scrollbarvertical, scrollbarhorizontal {
-  margin: 0;
+  margin: 4dp;
   border: 0;
 }
 scrollbarvertical slidertrack, scrollbarhorizontal slidertrack {
@@ -372,7 +372,7 @@ scrollbarvertical slidertrack, scrollbarhorizontal slidertrack {
   opacity: 0.05;
 }
 scrollbarvertical sliderbar, scrollbarhorizontal sliderbar {
-  border-radius: 5dp;
+  border-radius: 4dp;
   background: #DABAF7;
   opacity: 0.1;
 }
@@ -388,23 +388,26 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc, scrollbarhor
 }
 
 scrollbarvertical {
-  width: 12dp;
+  width: 28dp;
+  margin-left: 0;
 }
 scrollbarvertical slidertrack {
-  width: 12dp;
+  width: 28dp;
 }
 scrollbarvertical sliderbar {
-  width: 12dp;
+  width: 28dp;
+  min-height: 56dp;
 }
 
 scrollbarhorizontal {
-  height: 12dp;
+  height: 28dp;
 }
 scrollbarhorizontal slidertrack {
-  height: 12dp;
+  height: 28dp;
 }
 scrollbarhorizontal sliderbar {
-  height: 12dp;
+  height: 28dp;
+  min-width: 56dp;
 }
 
 .centered-page {

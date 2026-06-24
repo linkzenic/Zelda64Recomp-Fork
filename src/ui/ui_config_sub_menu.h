@@ -98,9 +98,12 @@ public:
     virtual ~ConfigSubMenu();
     void enter(std::string_view title);
     void clear_options();
+    void set_header_visible(bool visible);
+    void set_back_button_visible(bool visible);
     void add_slider_option(std::string_view id, std::string_view name, std::string_view description, double value, double min, double max, double step, bool percent, std::function<void(const std::string &, double)> callback);
     void add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
     void add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
+    void add_section_header(std::string_view name);
 };
 
 class ElementConfigSubMenu : public Rml::Element {

@@ -19,6 +19,7 @@
 #include "z64rumble.h"
 #include "z64shrink_window.h"
 #include "z64view.h"
+#include "save_editor_builtin.h"
 
 #include "overlays/gamestates/ovl_daytelop/z_daytelop.h"
 #include "overlays/gamestates/ovl_opening/z_opening.h"
@@ -47,6 +48,7 @@ RECOMP_PATCH void Play_Main(GameState* thisx) {
     // @recomp
     debug_play_update(this);
     controls_play_update(this);
+    save_editor_builtin_play_update(this);
     analog_cam_pre_play_update(this);
     matrix_play_update(this);
     

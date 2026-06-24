@@ -9,6 +9,9 @@
 #include <cinttypes>
 #include <cstdlib>
 #include <cctype>
+#include <algorithm>
+#include <fstream>
+#include <iomanip>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -52,12 +55,14 @@
 #include "zelda_render.h"
 #include "zelda_support.h"
 #include "zelda_game.h"
+#include "recomp_files.h"
 #include "recomp_data.h"
 #include "../ui/ui_mod_installer.h"
 #include "ovl_patches.hpp"
 #include "librecomp/game.hpp"
 #include "librecomp/mods.hpp"
 #include "librecomp/helpers.hpp"
+#include "json/json.hpp"
 
 #include "../../patches/graphics.h"
 #include "../../patches/input.h"
@@ -100,6 +105,64 @@ static bool android_string_equals_ci(const char* value, const char* expected) {
     }
 
     return *value == '\0' && *expected == '\0';
+}
+
+static void android_disable_obsolete_mods() {
+    static constexpr const char* save_editor_mod_id = "mm_recomp_save_editor";
+    const std::filesystem::path mods_config_path = zelda64::get_app_folder_path() / "mods.json";
+
+    std::ifstream input_file{mods_config_path};
+    if (!input_file.good()) {
+        return;
+    }
+
+    nlohmann::json config_json{};
+    try {
+        input_file >> config_json;
+    }
+    catch (nlohmann::json::parse_error&) {
+        ZELDA_ANDROID_LOG("obsolete mod scrub skipped; mods.json parse failed");
+        return;
+    }
+
+    bool changed = false;
+    auto remove_mod_id = [&](const char* key) {
+        auto array_it = config_json.find(key);
+        if (array_it == config_json.end() || !array_it->is_array()) {
+            return;
+        }
+
+        auto& array = *array_it;
+        const size_t old_size = array.size();
+        array.erase(std::remove_if(array.begin(), array.end(), [](const nlohmann::json& entry) {
+            return entry.is_string() && entry.get<std::string>() == save_editor_mod_id;
+        }), array.end());
+        changed = changed || array.size() != old_size;
+    };
+
+    remove_mod_id("enabled_mods");
+    remove_mod_id("mod_order");
+
+    if (!changed) {
+        return;
+    }
+
+    {
+        std::ofstream output_file = recomp::open_output_file_with_backup(mods_config_path);
+        if (!output_file.good()) {
+            ZELDA_ANDROID_LOG("obsolete mod scrub failed; could not open mods.json for write");
+            return;
+        }
+
+        output_file << std::setw(4) << config_json;
+    }
+
+    if (!recomp::finalize_output_file_with_backup(mods_config_path)) {
+        ZELDA_ANDROID_LOG("obsolete mod scrub failed; could not finalize mods.json");
+        return;
+    }
+
+    ZELDA_ANDROID_LOG("disabled obsolete Android mod: %s", save_editor_mod_id);
 }
 
 static void android_configure_device_flags() {
@@ -503,6 +566,10 @@ extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_clock_texture_pack_loaded(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_should_use_3ds_clock_overlay(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_save_editor_set_snapshot_value(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_save_editor_get_pending_value(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_save_editor_should_apply_pending(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_save_editor_clear_pending(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
@@ -827,6 +894,7 @@ int main(int argc, char** argv) {
     ZELDA_ANDROID_STAGE("registered config path");
     ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
 #if defined(__ANDROID__)
+    android_disable_obsolete_mods();
     android_configure_device_flags();
 #endif
 
@@ -847,21 +915,23 @@ int main(int argc, char** argv) {
 #if !defined(ZELDA_ANDROID_RUNTIME_APK)
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
 #endif
-#if defined(__ANDROID__)
+#if !defined(__ANDROID__)
+    recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
+#elif defined(__ANDROID__)
     if (android_safe_mode_enabled()) {
         ZELDA_ANDROID_LOG("safe mode active; optional embedded mods skipped");
     }
-    else
 #endif
-    {
-        recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
-    }
     ZELDA_ANDROID_STAGE("registered embedded mods");
 
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
     REGISTER_FUNC(recomp_get_target_framerate);
     REGISTER_FUNC(recomp_get_autosave_enabled);
+    REGISTER_FUNC(recomp_save_editor_set_snapshot_value);
+    REGISTER_FUNC(recomp_save_editor_get_pending_value);
+    REGISTER_FUNC(recomp_save_editor_should_apply_pending);
+    REGISTER_FUNC(recomp_save_editor_clear_pending);
     REGISTER_FUNC(recomp_get_analog_cam_enabled);
     REGISTER_FUNC(recomp_get_analog_camera_distance);
     REGISTER_FUNC(recomp_get_camera_inputs);

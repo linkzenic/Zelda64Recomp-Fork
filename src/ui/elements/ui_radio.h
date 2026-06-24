@@ -3,6 +3,8 @@
 #include "ui_container.h"
 #include "ui_label.h"
 
+#include <algorithm>
+
 namespace recompui {
     class RadioOption : public Element {
     private:
@@ -48,7 +50,7 @@ namespace recompui {
         void set_focus_callback(std::function<void(bool)> callback);
         size_t num_options() const { return options.size(); }
         RadioOption* get_option_element(size_t option_index) { return options[option_index]; }
-        RadioOption* get_current_option_element() { return options.empty() ? nullptr : options[index]; }
+        RadioOption* get_current_option_element() { return options.empty() ? nullptr : options[std::min<size_t>(index, options.size() - 1)]; }
         void set_nav_auto(NavDirection dir) override;
         void set_nav_none(NavDirection dir) override;
         void set_nav(NavDirection dir, Element* element) override;

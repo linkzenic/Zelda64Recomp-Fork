@@ -129,6 +129,7 @@ public:
         recompui::register_event(listener, "open_mods",
             [](const std::string &param, Rml::Event &event) {
                 recompui::set_config_tab(recompui::ConfigTab::Mods);
+                recompui::update_mod_list(true);
                 recompui::hide_all_contexts();
                 recompui::show_context(recompui::get_config_context_id(), "");
             }

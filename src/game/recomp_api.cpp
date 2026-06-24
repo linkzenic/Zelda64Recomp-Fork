@@ -4,6 +4,7 @@
 #include "librecomp/overlays.hpp"
 #include "zelda_config.h"
 #include "zelda_clock_overlay.h"
+#include "zelda_save_editor.h"
 #include "recomp_input.h"
 #include "recomp_ui.h"
 #include "zelda_render.h"
@@ -106,6 +107,24 @@ extern "C" void recomp_time_us(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" void recomp_get_autosave_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, static_cast<s32>(zelda64::get_autosave_mode() == zelda64::AutosaveMode::On));
+}
+
+extern "C" void recomp_save_editor_set_snapshot_value(uint8_t* rdram, recomp_context* ctx) {
+    auto id = static_cast<zelda64::save_editor::ValueId>(_arg<0, s32>(rdram, ctx));
+    zelda64::save_editor::set_snapshot_value(id, _arg<1, s32>(rdram, ctx));
+}
+
+extern "C" void recomp_save_editor_get_pending_value(uint8_t* rdram, recomp_context* ctx) {
+    auto id = static_cast<zelda64::save_editor::ValueId>(_arg<0, s32>(rdram, ctx));
+    _return(ctx, zelda64::save_editor::get_pending_value(id));
+}
+
+extern "C" void recomp_save_editor_should_apply_pending(uint8_t* rdram, recomp_context* ctx) {
+    _return(ctx, zelda64::save_editor::should_apply_pending() ? 1 : 0);
+}
+
+extern "C" void recomp_save_editor_clear_pending(uint8_t* rdram, recomp_context* ctx) {
+    zelda64::save_editor::clear_pending();
 }
 
 extern "C" void recomp_load_overlays(uint8_t * rdram, recomp_context * ctx) {

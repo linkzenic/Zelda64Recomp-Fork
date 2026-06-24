@@ -318,7 +318,7 @@
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertNone"
                                 id="analog_camera_inversion_none"
-                                style="nav-up: #analog_camera_distance_input;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_disabled"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_none">None</label>
 
@@ -330,7 +330,7 @@
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertX"
                                 id="analog_camera_inversion_x"
-                                style="nav-up: #analog_camera_distance_input;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_disabled"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_x">Invert X</label>
 
@@ -342,7 +342,7 @@
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertY"
                                 id="analog_camera_inversion_y"
-                                style="nav-up: #analog_camera_distance_input;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_disabled"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_y">Invert Y</label>
 
@@ -354,9 +354,39 @@
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertBoth"
                                 id="analog_camera_inversion_both"
-                                style="nav-up: #analog_camera_distance_input;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_enabled"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_both">Invert Both</label>
+                        </div>
+                    </div>
+
+                    <!-- advanced settings -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(12)" id="conf-general__Advanced-Settings">
+                        <label class="config-option__title">Advanced Settings</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="advanced_settings_mode"
+                                data-checked="advanced_settings_mode"
+                                value="On"
+                                id="advanced_settings_enabled"
+                                style="nav-up: #analog_camera_inversion_both"
+                            />
+                            <label class="config-option__tab-label" for="advanced_settings_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="advanced_settings_mode"
+                                data-checked="advanced_settings_mode"
+                                value="Off"
+                                id="advanced_settings_disabled"
+                                style="nav-up: #analog_camera_inversion_none"
+                            />
+                            <label class="config-option__tab-label" for="advanced_settings_disabled">Off</label>
                         </div>
                     </div>
                 </div>
@@ -417,6 +447,9 @@
                     </p>
                     <p data-if="cur_config_index == 11">
                         Inverts the camera controls for the analog camera if it's enabled. <b>None</b> is the default.
+                    </p>
+                    <p data-if="cur_config_index == 12">
+                        Shows advanced app-owned tools, including the Editor tab.
                     </p>
                 </div>
             </div>

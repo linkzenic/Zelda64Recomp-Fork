@@ -105,6 +105,21 @@ namespace zelda64 {
     void set_dpad_items_mode(DpadItemsMode mode);
     bool get_dpad_items_enabled();
 
+    enum class AdvancedSettingsMode {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::AdvancedSettingsMode, {
+        {zelda64::AdvancedSettingsMode::Off, "Off"},
+        {zelda64::AdvancedSettingsMode::On, "On"}
+    });
+
+    AdvancedSettingsMode get_advanced_settings_mode();
+    void set_advanced_settings_mode(AdvancedSettingsMode mode);
+    bool get_advanced_settings_enabled();
+
     enum class ClockStyle {
         Original,
         ThreeDS,

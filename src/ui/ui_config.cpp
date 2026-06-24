@@ -42,8 +42,10 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 3;
     case recompui::ConfigTab::Mods:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Editor:
         return 5;
+    case recompui::ConfigTab::Debug:
+        return 6;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -250,6 +252,7 @@ struct ControlOptionsContext {
     int analog_camera_distance; // 100 to 900, free camera distance in world units
     zelda64::CameraInvertMode analog_camera_invert_mode;
     zelda64::DpadItemsMode dpad_items_mode;
+    zelda64::AdvancedSettingsMode advanced_settings_mode;
 };
 
 ControlOptionsContext control_options_context;
@@ -408,6 +411,22 @@ bool zelda64::get_dpad_items_enabled() {
     return control_options_context.dpad_items_mode == zelda64::DpadItemsMode::On;
 }
 
+zelda64::AdvancedSettingsMode zelda64::get_advanced_settings_mode() {
+    return control_options_context.advanced_settings_mode;
+}
+
+void zelda64::set_advanced_settings_mode(zelda64::AdvancedSettingsMode mode) {
+    control_options_context.advanced_settings_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("advanced_settings_mode");
+        general_model_handle.DirtyVariable("advanced_settings_enabled");
+    }
+}
+
+bool zelda64::get_advanced_settings_enabled() {
+    return control_options_context.advanced_settings_mode == zelda64::AdvancedSettingsMode::On;
+}
+
 zelda64::ClockStyle zelda64::get_clock_style() {
     return hud_options_context.clock_style;
 }
@@ -533,17 +552,11 @@ class ConfigTabsetListener : public Rml::EventListener {
             int tab_index = event.GetParameter<int>("tab_index", 0);
             bool in_mod_tab = (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Mods));
             if (in_mod_tab) {
+                recompui::update_mod_list(false);
                 recompui::set_config_tabset_mod_nav();
             }
-            else {
-                Rml::ElementTabSet* tabset = recompui::get_config_tabset();
-                Rml::Element* tabs = recompui::get_child_by_tag(tabset, "tabs");
-                if (tabs != nullptr) {
-                    size_t num_children = tabs->GetNumChildren();
-                    for (size_t i = 0; i < num_children; i++) {
-                        tabs->GetChild(i)->SetProperty(Rml::PropertyId::NavDown, Rml::Style::Nav::Auto);
-                    }
-                }
+            else if (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Editor)) {
+                recompui::refresh_save_editor_config();
             }
         }
     }
@@ -1064,6 +1077,17 @@ public:
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
         bind_option(constructor, "dpad_items_mode", &control_options_context.dpad_items_mode);
+        constructor.BindFunc("advanced_settings_mode",
+            [](Rml::Variant& out) { get_option(control_options_context.advanced_settings_mode, out); },
+            [](const Rml::Variant& in) {
+                set_option(control_options_context.advanced_settings_mode, in);
+                general_model_handle.DirtyVariable("advanced_settings_mode");
+                general_model_handle.DirtyVariable("advanced_settings_enabled");
+            }
+        );
+        constructor.BindFunc("advanced_settings_enabled", [](Rml::Variant& out) {
+            out = zelda64::get_advanced_settings_enabled();
+        });
 
         general_model_handle = constructor.GetModelHandle();
     }

@@ -207,6 +207,15 @@ void ConfigSubMenu::clear_options() {
     config_scroll_container->clear_children();
     config_option_elements.clear();
     description_option_element = nullptr;
+    description_label->set_text("");
+}
+
+void ConfigSubMenu::set_header_visible(bool visible) {
+    header_container->set_display(visible ? Display::Flex : Display::None);
+}
+
+void ConfigSubMenu::set_back_button_visible(bool visible) {
+    back_button->set_display(visible ? Display::Block : Display::None);
 }
 
 void ConfigSubMenu::add_option(ConfigOptionElement *option, std::string_view id, std::string_view name, std::string_view description) {
@@ -240,6 +249,19 @@ void ConfigSubMenu::add_text_option(std::string_view id, std::string_view name, 
 void ConfigSubMenu::add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback) {
     ConfigOptionRadio *option_radio = get_current_context().create_element<ConfigOptionRadio>(config_scroll_container, value, options, callback);
     add_option(option_radio, id, name, description);
+}
+
+void ConfigSubMenu::add_section_header(std::string_view name) {
+    Label *header_label = get_current_context().create_element<Label>(config_scroll_container, LabelStyle::Annotation);
+    header_label->set_text(name);
+    header_label->set_font_size(32.0f);
+    header_label->set_letter_spacing(2.52f);
+    header_label->set_line_height(32.0f);
+    header_label->set_font_weight(700);
+    header_label->set_height(40.0f);
+    header_label->set_margin_top(config_option_elements.empty() ? 0.0f : 24.0f);
+    header_label->set_margin_bottom(8.0f);
+    header_label->set_color(Color{ 255, 255, 255, 255 });
 }
 
 // ElementConfigSubMenu

@@ -91,8 +91,19 @@ namespace recompui {
     // Radio
 
     void Radio::set_index_internal(uint32_t index, bool setup, bool trigger_callbacks) {
+        if (options.empty()) {
+            this->index = 0;
+            return;
+        }
+
+        if (index >= options.size()) {
+            index = static_cast<uint32_t>(options.size() - 1);
+        }
+
         if (this->index != index || setup) {
-            options[this->index]->set_selected_state(false);
+            if (this->index < options.size()) {
+                options[this->index]->set_selected_state(false);
+            }
             this->index = index;
             options[index]->set_selected_state(true);
 
@@ -139,7 +150,9 @@ namespace recompui {
         case EventType::Update:
             if (child_focus_queued) {
                 child_focus_queued = false;
-                options[index]->focus();
+                if (!options.empty()) {
+                    options[std::min<size_t>(index, options.size() - 1)]->focus();
+                }
             }
         }
     }
