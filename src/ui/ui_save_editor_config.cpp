@@ -604,6 +604,7 @@ SaveEditorConfigPanel::SaveEditorConfigPanel(Element *parent, Rml::Element *host
     live_category_container->set_gap(14.0f);
     live_category_container->set_padding_left(32.0f);
     live_category_container->set_padding_right(32.0f);
+    live_category_container->set_padding_top(8.0f);
     live_category_container->set_padding_bottom(14.0f);
     live_category_container->set_display(Display::None);
     build_live_category_tabs();
