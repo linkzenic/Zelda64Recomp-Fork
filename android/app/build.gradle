@@ -32,8 +32,8 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 36
-        versionCode 57
-        versionName zeldaVulkanProbe ? '0.5.7-android-vulkan-probe' : (zeldaProbe ? '0.5.7-android-sdl-probe' : '0.5.7')
+        versionCode 58
+        versionName zeldaVulkanProbe ? '0.5.8-android-vulkan-probe' : (zeldaProbe ? '0.5.8-android-sdl-probe' : '0.5.8')
 
         externalNativeBuild {
             cmake {

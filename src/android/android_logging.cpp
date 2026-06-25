@@ -15,6 +15,7 @@
 #include <jni.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/system_properties.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <unwind.h>
@@ -40,6 +41,20 @@ void copy_path(char* destination, size_t destination_size, const char* source) {
 
     std::strncpy(destination, source, destination_size - 1);
     destination[destination_size - 1] = '\0';
+}
+
+bool is_android_emulator() {
+    char property_value[PROP_VALUE_MAX] = {};
+    if (__system_property_get("ro.kernel.qemu", property_value) > 0 && std::strcmp(property_value, "1") == 0) {
+        return true;
+    }
+    if (__system_property_get("ro.boot.qemu", property_value) > 0 && std::strcmp(property_value, "1") == 0) {
+        return true;
+    }
+    if (__system_property_get("ro.hardware", property_value) > 0 && std::strcmp(property_value, "ranchu") == 0) {
+        return true;
+    }
+    return false;
 }
 
 void write_all(int fd, const char* text) {
@@ -253,6 +268,11 @@ void install_crash_handlers() {
 
 void redirect_stdio_to_log() {
     if (log_path[0] == '\0') {
+        return;
+    }
+
+    if (is_android_emulator()) {
+        append_log("Skipping stdout/stderr file redirection on Android emulator");
         return;
     }
 
