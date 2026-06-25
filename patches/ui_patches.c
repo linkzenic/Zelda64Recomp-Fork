@@ -3,12 +3,29 @@
 #include "buffers.h"
 #include "sys_cfb.h"
 #include "input.h"
+#include "misc_funcs.h"
+#include "fault.h"
+#include "libc64/malloc.h"
+#include "overlays/gamestates/ovl_daytelop/z_daytelop.h"
+#include "overlays/gamestates/ovl_file_choose/z_file_select.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
+#include "overlays/gamestates/ovl_opening/z_opening.h"
+#include "overlays/gamestates/ovl_select/z_select.h"
+#include "overlays/gamestates/ovl_title/z_title.h"
+#include "z64shrink_window.h"
+#include "z64view.h"
+#include "z_title_setup.h"
 
 // This moves elements towards the screen edges when increased
 s32 margin_reduction = 8;
 
 extern s32 gFramerateDivisor;
+
+void Setup_SetRegs(void);
+void ConsoleLogo_Main(GameState* thisx);
+void TitleSetup_Main(GameState* thisx);
+void TitleSetup_SetupTitleScreen(TitleSetupState* this);
+void func_80803EA0(TitleSetupState* this);
 
 // 10 times bigger than the game's normal buffers.
 typedef struct {
@@ -25,8 +42,480 @@ BiggerGfxPool gBiggerGfxPools[2];
 static u32 sGraphDiagUpdateCount = 0;
 static u32 sGraphDiagExecuteCount = 0;
 
+typedef void* (*GraphDiagMallocFunc)(size_t size);
+typedef void (*GraphDiagFreeFunc)(void* ptr);
+typedef s32 (*GraphDiagMallocIsInitializedFunc)(void);
+typedef void (*GraphDiagMallocInitFunc)(void* start, size_t size);
+typedef void (*GraphDiagGetFreeArenaFunc)(size_t* maxFreeBlock, size_t* bytesFree, size_t* bytesAllocated);
+
+static void* GraphDiag_Malloc(size_t size) {
+    return ((GraphDiagMallocFunc)0x80086DD0)(size);
+}
+
+static void GraphDiag_Free(void* ptr) {
+    ((GraphDiagFreeFunc)0x80086E50)(ptr);
+}
+
+static s32 GraphDiag_MallocIsInitialized(void) {
+    return ((GraphDiagMallocIsInitializedFunc)0x80086F7C)();
+}
+
+static void GraphDiag_MallocInit(void* start, size_t size) {
+    ((GraphDiagMallocInitFunc)0x80086F28)(start, size);
+}
+
+static void GraphDiag_GetFreeArena(size_t* maxFreeBlock, size_t* bytesFree, size_t* bytesAllocated) {
+    ((GraphDiagGetFreeArenaFunc)0x80086ECC)(maxFreeBlock, bytesFree, bytesAllocated);
+}
+
 static s32 GraphDiag_ShouldLog(u32 count) {
-    return recomp_android_should_disable_rumble() && (count < 16);
+    return !recomp_android_should_use_sync_boot_dma() && recomp_android_should_disable_rumble() && (count < 16);
+}
+
+static void GraphDiag_NativeLog(s32 enabled, s32 stage, u32 a, u32 b, u32 c, u32 d) {
+    if (enabled) {
+        recomp_measure_latency(stage, a, b, c, d);
+    }
+}
+
+static void GraphDiag_EnsureSystemHeap(s32 samsungDiag) {
+    s32 initialized;
+    size_t maxFreeBlock = 0;
+    size_t bytesFree = 0;
+    size_t bytesAllocated = 0;
+    u32 heapStart = (u32)gSystemHeap;
+    u32 heapSize = FRAMEBUFFERS_START_ADDR - heapStart;
+
+    if (!samsungDiag) {
+        return;
+    }
+
+    initialized = GraphDiag_MallocIsInitialized();
+    if (initialized) {
+        GraphDiag_GetFreeArena(&maxFreeBlock, &bytesFree, &bytesAllocated);
+    }
+    GraphDiag_NativeLog(samsungDiag, 30, (u32)initialized, (u32)maxFreeBlock, (u32)bytesFree,
+                        (u32)bytesAllocated);
+    if (((!initialized) || ((maxFreeBlock == 0) && (bytesFree == 0) && (bytesAllocated == 0))) &&
+        (heapSize != 0)) {
+        GraphDiag_MallocInit((void*)heapStart, heapSize);
+        maxFreeBlock = 0;
+        bytesFree = 0;
+        bytesAllocated = 0;
+        if (GraphDiag_MallocIsInitialized()) {
+            GraphDiag_GetFreeArena(&maxFreeBlock, &bytesFree, &bytesAllocated);
+        }
+        GraphDiag_NativeLog(samsungDiag, 31, (u32)GraphDiag_MallocIsInitialized(), (u32)maxFreeBlock,
+                            (u32)bytesFree, (u32)bytesAllocated);
+    }
+}
+
+static u32 GraphDiag_ExpectedGameStateSize(GameStateOverlay* ovl) {
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_SETUP]) {
+        return sizeof(SetupState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_MAP_SELECT]) {
+        return sizeof(MapSelectState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_CONSOLE_LOGO]) {
+        return sizeof(ConsoleLogoState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_PLAY]) {
+        return sizeof(PlayState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_TITLE_SETUP]) {
+        return sizeof(TitleSetupState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_FILE_SELECT]) {
+        return sizeof(FileSelectState);
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_DAYTELOP]) {
+        return sizeof(DayTelopState);
+    }
+
+    return 0;
+}
+
+static GameStateFunc GraphDiag_ExpectedGameStateInit(GameStateOverlay* ovl) {
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_SETUP]) {
+        return Setup_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_MAP_SELECT]) {
+        return MapSelect_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_CONSOLE_LOGO]) {
+        return ConsoleLogo_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_PLAY]) {
+        return Play_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_TITLE_SETUP]) {
+        return TitleSetup_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_FILE_SELECT]) {
+        return FileSelect_Init;
+    }
+    if (ovl == &gGameStateOverlayTable[GAMESTATE_DAYTELOP]) {
+        return DayTelop_Init;
+    }
+
+    return NULL;
+}
+
+static GameStateOverlay* GraphDiag_GameStateForInit(GameStateFunc init) {
+    if (init == Setup_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_SETUP];
+    }
+    if (init == MapSelect_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_MAP_SELECT];
+    }
+    if (init == ConsoleLogo_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_CONSOLE_LOGO];
+    }
+    if (init == Play_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_PLAY];
+    }
+    if (init == TitleSetup_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_TITLE_SETUP];
+    }
+    if (init == FileSelect_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_FILE_SELECT];
+    }
+    if (init == DayTelop_Init) {
+        return &gGameStateOverlayTable[GAMESTATE_DAYTELOP];
+    }
+
+    return NULL;
+}
+
+static void GraphDiag_ClearGameState(GameState* gameState, u32 size) {
+    u8* bytes = (u8*)gameState;
+    u32 i;
+
+    for (i = 0; i < size; i++) {
+        bytes[i] = 0;
+    }
+}
+
+RECOMP_PATCH void Graph_ThreadEntry(void* arg) {
+    GraphicsContext gfxCtx;
+    GameStateOverlay* nextOvl = &gGameStateOverlayTable[0];
+    GameStateOverlay* ovl;
+    GameState* gameState;
+    u32 size;
+    u32 updateLogCount = 0;
+    s32 samsungDiag;
+    s32 graphDiag;
+    s32 pad[2];
+
+    samsungDiag = recomp_android_should_use_sync_boot_dma();
+    graphDiag = !samsungDiag;
+    GraphDiag_NativeLog(samsungDiag, 1, (u32)gGameStateOverlayTable, (u32)gGraphNumGameStates, (u32)arg, 0);
+
+    if (graphDiag) {
+        recomp_printf("[GraphBoot] thread entered\n");
+        recomp_printf("[GraphBoot] thread begin table=%08X count=%d\n", (u32)gGameStateOverlayTable,
+                      gGraphNumGameStates);
+        recomp_printf("[GraphBoot] android sync boot dma=%d\n", samsungDiag);
+    }
+
+    GraphDiag_EnsureSystemHeap(samsungDiag);
+
+    gZBufferLoRes = GraphDiag_Malloc(sizeof(*gZBufferLoRes) + sizeof(*gWorkBufferLoRes) + 64 - 1);
+    GraphDiag_NativeLog(samsungDiag, 2, (u32)gZBufferLoRes,
+                        (u32)(sizeof(*gZBufferLoRes) + sizeof(*gWorkBufferLoRes) + 64 - 1), 0, 0);
+    if (graphDiag) {
+        recomp_printf("[GraphBoot] z/work alloc raw=%08X bytes=%u\n", (u32)gZBufferLoRes,
+                      (u32)(sizeof(*gZBufferLoRes) + sizeof(*gWorkBufferLoRes) + 64 - 1));
+    }
+    if (gZBufferLoRes == NULL) {
+        GraphDiag_NativeLog(samsungDiag, 3, 0, 0, 0, 0);
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] z/work allocation failed\n");
+        }
+        return;
+    }
+    gZBufferLoRes = (void*)ALIGN64((u32)gZBufferLoRes);
+
+    gWorkBufferLoRes = (void*)((u8*)gZBufferLoRes + sizeof(*gZBufferLoRes));
+
+    gGfxSPTaskOutputBufferHiRes = gGfxSPTaskOutputBufferLoRes = GraphDiag_Malloc(sizeof(*gGfxSPTaskOutputBufferLoRes));
+    GraphDiag_NativeLog(samsungDiag, 4, (u32)gGfxSPTaskOutputBufferLoRes,
+                        (u32)sizeof(*gGfxSPTaskOutputBufferLoRes), (u32)gZBufferLoRes, (u32)gWorkBufferLoRes);
+    if (graphDiag) {
+        recomp_printf("[GraphBoot] sp task alloc=%08X bytes=%u z=%08X work=%08X\n",
+                      (u32)gGfxSPTaskOutputBufferLoRes, (u32)sizeof(*gGfxSPTaskOutputBufferLoRes),
+                      (u32)gZBufferLoRes, (u32)gWorkBufferLoRes);
+    }
+    if (gGfxSPTaskOutputBufferLoRes == NULL) {
+        GraphDiag_NativeLog(samsungDiag, 5, 0, 0, 0, 0);
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] sp task allocation failed\n");
+        }
+        return;
+    }
+
+    gGfxSPTaskOutputBufferEndLoRes = (u8*)gGfxSPTaskOutputBufferLoRes + sizeof(*gGfxSPTaskOutputBufferLoRes);
+    gGfxSPTaskOutputBufferEndHiRes = (u8*)gGfxSPTaskOutputBufferHiRes + sizeof(*gGfxSPTaskOutputBufferHiRes);
+
+    GraphDiag_NativeLog(samsungDiag, 6, (u32)&gfxCtx, (u32)gWorkBuffer, (u32)gGfxSPTaskOutputBufferPtr,
+                        (u32)gGfxSPTaskOutputBufferEnd);
+    SysCfb_Init();
+    Fault_SetFrameBuffer(gWorkBuffer, SCREEN_WIDTH, SCREEN_HEIGHT);
+    Graph_Init(&gfxCtx);
+    GraphDiag_NativeLog(samsungDiag, 7, (u32)&gfxCtx, (u32)gWorkBuffer, (u32)gGfxSPTaskOutputBufferPtr,
+                        (u32)gGfxSPTaskOutputBufferEnd);
+
+    if (graphDiag) {
+        recomp_printf("[GraphBoot] init done gfx=%08X work=%08X sp=%08X-%08X\n", (u32)&gfxCtx, (u32)gWorkBuffer,
+                      (u32)gGfxSPTaskOutputBufferPtr, (u32)gGfxSPTaskOutputBufferEnd);
+    }
+
+    while (nextOvl) {
+        u32 expectedSize;
+        GameStateFunc init;
+
+        ovl = nextOvl;
+        expectedSize = GraphDiag_ExpectedGameStateSize(ovl);
+        init = ovl->init;
+        GraphDiag_NativeLog(samsungDiag, 8, (u32)ovl, (u32)(ovl - gGameStateOverlayTable),
+                            (u32)ovl->init, (u32)ovl->instanceSize);
+
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] ovl begin ovl=%08X index=%d loaded=%08X init=%08X destroy=%08X size=%u expected=%u vrom=%08X-%08X vram=%08X-%08X\n",
+                          (u32)ovl, (s32)(ovl - gGameStateOverlayTable), (u32)ovl->loadedRamAddr,
+                          (u32)ovl->init, (u32)ovl->destroy, (u32)ovl->instanceSize, expectedSize,
+                          (u32)ovl->vromStart, (u32)ovl->vromEnd, (u32)ovl->vramStart, (u32)ovl->vramEnd);
+        }
+
+        GraphDiag_NativeLog(samsungDiag, 20, (u32)ovl, (u32)ovl->vromStart, (u32)ovl->vromEnd,
+                            (u32)ovl->loadedRamAddr);
+        Overlay_LoadGameState(ovl);
+        init = ovl->init;
+        if (samsungDiag && (GraphDiag_ExpectedGameStateInit(ovl) != NULL)) {
+            init = GraphDiag_ExpectedGameStateInit(ovl);
+        }
+        GraphDiag_NativeLog(samsungDiag, 21, (u32)ovl, (u32)ovl->loadedRamAddr, (u32)ovl->init,
+                            (u32)ovl->instanceSize);
+        GraphDiag_NativeLog(samsungDiag, 23, (u32)ovl, (u32)init, (u32)GraphDiag_ExpectedGameStateInit(ovl),
+                            (u32)ovl->init);
+
+        size = ovl->instanceSize;
+        if (samsungDiag && ((size == 0) || (size > 0x40000))) {
+            GraphDiag_NativeLog(samsungDiag, 9, size, expectedSize, (u32)ovl, 0);
+            if (graphDiag) {
+                recomp_printf("[GraphBoot] repairing ovl size bad=%u expected=%u ovl=%08X\n", size, expectedSize,
+                              (u32)ovl);
+            }
+            if (expectedSize != 0) {
+                ovl->instanceSize = expectedSize;
+                size = expectedSize;
+            }
+        }
+
+        if ((size == 0) || (size > 0x40000)) {
+            GraphDiag_NativeLog(samsungDiag, 10, size, (u32)ovl, (u32)ovl->init, expectedSize);
+            if (graphDiag) {
+                recomp_printf("[GraphBoot] invalid game state size=%u ovl=%08X\n", size, (u32)ovl);
+            }
+            return;
+        }
+
+        func_800809F4(ovl->vromStart);
+        GraphDiag_NativeLog(samsungDiag, 22, (u32)ovl, (u32)ovl->vromStart, (u32)ovl->loadedRamAddr, size);
+
+        gameState = GraphDiag_Malloc(size);
+        GraphDiag_NativeLog(samsungDiag, 11, (u32)gameState, size, (u32)init, (u32)ovl->loadedRamAddr);
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] state alloc state=%08X size=%u init=%08X loaded=%08X\n", (u32)gameState,
+                          size, (u32)init, (u32)ovl->loadedRamAddr);
+        }
+        if (gameState == NULL) {
+            GraphDiag_NativeLog(samsungDiag, 12, size, (u32)ovl, (u32)ovl->init, 0);
+            if (graphDiag) {
+                recomp_printf("[GraphBoot] game state allocation failed size=%u\n", size);
+            }
+            return;
+        }
+
+        if (samsungDiag) {
+            GraphDiag_ClearGameState(gameState, size);
+        } else {
+            bzero(gameState, size);
+        }
+
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] state clear done state=%08X size=%u\n", (u32)gameState, size);
+        }
+        GraphDiag_NativeLog(samsungDiag, 13, (u32)gameState, size, (u32)init, 0);
+
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] state init begin state=%08X init=%08X\n", (u32)gameState, (u32)init);
+        }
+        GraphDiag_NativeLog(samsungDiag, 14, (u32)gameState, (u32)init, (u32)&gfxCtx, 0);
+        GameState_Init(gameState, init, &gfxCtx);
+        GraphDiag_NativeLog(samsungDiag, 15, (u32)gameState, (u32)GameState_IsRunning(gameState),
+                            (u32)gameState->init, gameState->size);
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] state init end state=%08X running=%d stateInit=%08X stateSize=%u\n",
+                          (u32)gameState, GameState_IsRunning(gameState), (u32)gameState->init, gameState->size);
+        }
+
+        while (GameState_IsRunning(gameState)) {
+            if (updateLogCount < 8) {
+                GraphDiag_NativeLog(samsungDiag, 16, updateLogCount, (u32)gameState, (u32)gameState->init, 0);
+            }
+            if (graphDiag && (updateLogCount < 16)) {
+                recomp_printf("[GraphBoot] update begin state=%08X init=%08X\n", (u32)gameState,
+                              (u32)gameState->init);
+            }
+            Graph_Update(&gfxCtx, gameState);
+            if (updateLogCount < 8) {
+                GraphDiag_NativeLog(samsungDiag, 17, updateLogCount, (u32)GameState_IsRunning(gameState),
+                                    (u32)gameState->init, 0);
+            }
+            if (graphDiag && (updateLogCount < 16)) {
+                recomp_printf("[GraphBoot] update end state=%08X running=%d init=%08X\n", (u32)gameState,
+                              GameState_IsRunning(gameState), (u32)gameState->init);
+            }
+            updateLogCount++;
+        }
+
+        nextOvl = Graph_GetNextGameState(gameState);
+        if (nextOvl == NULL) {
+            nextOvl = GraphDiag_GameStateForInit(gameState->init);
+        }
+        GraphDiag_NativeLog(samsungDiag, 18, (u32)gameState, (u32)nextOvl, (u32)gameState->init,
+                            (u32)gameState->size);
+
+        if (graphDiag) {
+            recomp_printf("[GraphBoot] state stopped state=%08X next=%08X init=%08X size=%u\n", (u32)gameState,
+                          (u32)nextOvl, (u32)gameState->init, (u32)gameState->size);
+        }
+
+        if (size) {}
+
+        GameState_Destroy(gameState);
+        GraphDiag_Free(gameState);
+
+        Overlay_FreeGameState(ovl);
+    }
+    GraphDiag_NativeLog(samsungDiag, 19, (u32)&gfxCtx, 0, 0, 0);
+    if (graphDiag) {
+        recomp_printf("[GraphBoot] thread exit\n");
+    }
+    Graph_Destroy(&gfxCtx);
+}
+
+RECOMP_EXPORT void recomp_android_graph_thread_entry(void* arg) {
+    Graph_ThreadEntry(arg);
+}
+
+RECOMP_PATCH void Setup_Init(GameState* thisx) {
+    SetupState* this = (SetupState*)thisx;
+
+    this->state.destroy = Setup_Destroy;
+    SysFlashrom_InitFlash();
+    SaveContext_Init();
+    Setup_SetRegs();
+
+    STOP_GAMESTATE(&this->state);
+    if (recomp_android_should_use_sync_boot_dma()) {
+        SET_NEXT_GAMESTATE(&this->state, TitleSetup_Init, sizeof(TitleSetupState));
+    } else {
+        SET_NEXT_GAMESTATE(&this->state, ConsoleLogo_Init, sizeof(ConsoleLogoState));
+    }
+}
+
+RECOMP_PATCH void ConsoleLogo_Init(GameState* thisx) {
+    ConsoleLogoState* this = (ConsoleLogoState*)thisx;
+    uintptr_t segmentSize = SEGMENT_ROM_SIZE(nintendo_rogo_static);
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    GraphDiag_NativeLog(samsungDiag, 50, (u32)this, (u32)segmentSize, (u32)this->state.gfxCtx, 0);
+    this->staticSegment = THA_AllocTailAlign16(&this->state.tha, segmentSize);
+    GraphDiag_NativeLog(samsungDiag, 51, (u32)this->staticSegment, (u32)segmentSize,
+                        (u32)SEGMENT_ROM_START(nintendo_rogo_static), 0);
+    DmaMgr_SendRequest0(this->staticSegment, SEGMENT_ROM_START(nintendo_rogo_static), segmentSize);
+    GraphDiag_NativeLog(samsungDiag, 52, (u32)this->staticSegment, (u32)segmentSize, 0, 0);
+
+    GameState_SetFramerateDivisor(&this->state, 1);
+    Matrix_Init(&this->state);
+    ShrinkWindow_Init();
+    View_Init(&this->view, this->state.gfxCtx);
+    GraphDiag_NativeLog(samsungDiag, 53, (u32)this, (u32)&this->view, (u32)this->state.gfxCtx, 0);
+
+    this->state.main = ConsoleLogo_Main;
+    this->state.destroy = ConsoleLogo_Destroy;
+    this->exit = false;
+
+    if (!(PadMgr_GetValidControllersMask() & 1)) {
+        gSaveContext.fileNum = 0xFEDC;
+    } else {
+        gSaveContext.fileNum = 0xFF;
+    }
+
+    gSaveContext.flashSaveAvailable = true;
+    Sram_Alloc(thisx, &this->sramCtx);
+    GraphDiag_NativeLog(samsungDiag, 54, (u32)this, (u32)&this->sramCtx, (u32)this->state.main,
+                        (u32)this->state.destroy);
+    this->ult = 0;
+    this->timer = 20;
+    this->coverAlpha = 255;
+    this->addAlpha = -12;
+    this->visibleDuration = 60;
+    GraphDiag_NativeLog(samsungDiag, 55, (u32)this, (u32)this->timer, (u32)this->coverAlpha,
+                        (u32)this->visibleDuration);
+}
+
+RECOMP_PATCH void TitleSetup_Init(GameState* thisx) {
+    TitleSetupState* this = (TitleSetupState*)thisx;
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    GraphDiag_NativeLog(samsungDiag, 60, (u32)this, (u32)this->state.gfxCtx, (u32)&this->view, 0);
+    GameState_SetFramerateDivisor(&this->state, 1);
+    GraphDiag_NativeLog(samsungDiag, 61, (u32)this, (u32)this->state.gfxCtx, 0, 0);
+    Matrix_Init(&this->state);
+    GraphDiag_NativeLog(samsungDiag, 62, (u32)this, (u32)this->state.gfxCtx, 0, 0);
+    ShrinkWindow_Init();
+    GraphDiag_NativeLog(samsungDiag, 63, (u32)this, (u32)this->state.gfxCtx, 0, 0);
+    View_Init(&this->view, this->state.gfxCtx);
+    GraphDiag_NativeLog(samsungDiag, 64, (u32)this, (u32)&this->view, (u32)this->state.gfxCtx, 0);
+    this->state.main = TitleSetup_Main;
+    this->state.destroy = TitleSetup_Destroy;
+
+    gSaveContext.respawnFlag = 0;
+    gSaveContext.respawn[RESPAWN_MODE_GORON].entrance = 0xFF;
+    gSaveContext.respawn[RESPAWN_MODE_ZORA].entrance = 0xFF;
+    gSaveContext.respawn[RESPAWN_MODE_DEKU].entrance = 0xFF;
+    gSaveContext.respawn[RESPAWN_MODE_HUMAN].entrance = 0xFF;
+    GraphDiag_NativeLog(samsungDiag, 65, (u32)this, (u32)this->state.main, (u32)this->state.destroy, 0);
+}
+
+RECOMP_PATCH void TitleSetup_Main(GameState* thisx) {
+    TitleSetupState* this = (TitleSetupState*)thisx;
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    GraphDiag_NativeLog(samsungDiag, 70, (u32)this, (u32)this->state.gfxCtx, (u32)this->state.main, 0);
+    if (!samsungDiag) {
+        func_8012CF0C(this->state.gfxCtx, false, true, 0, 0, 0);
+    }
+    GraphDiag_NativeLog(samsungDiag, 71, (u32)this, (u32)this->state.gfxCtx, (u32)gGfxMasterDL, 0);
+    TitleSetup_SetupTitleScreen(this);
+    GraphDiag_NativeLog(samsungDiag, 72, (u32)this, (u32)this->state.init, (u32)this->state.size,
+                        (u32)GameState_IsRunning(&this->state));
+    func_80803EA0(this);
+    GraphDiag_NativeLog(samsungDiag, 73, (u32)this, (u32)this->state.init, (u32)this->state.size, 0);
+}
+
+RECOMP_PATCH void TitleSetup_Destroy(GameState* thisx) {
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    GraphDiag_NativeLog(samsungDiag, 77, (u32)thisx, 0, 0, 0);
+    if (!samsungDiag) {
+        ShrinkWindow_Destroy();
+    }
+    GraphDiag_NativeLog(samsungDiag, 78, (u32)thisx, 0, 0, 0);
 }
 
 // @recomp Use the bigger gfx pools and enable RT64 extended GBI mode.
@@ -75,6 +564,7 @@ RECOMP_PATCH void GameState_Update(GameState* gameState) {
     GraphicsContext* gfxCtx = gameState->gfxCtx;
     u32 diagCount = sGraphDiagUpdateCount++;
     s32 logDiag = GraphDiag_ShouldLog(diagCount);
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
 
     if (logDiag) {
         recomp_printf("[GraphDiag] GameState_Update begin #%u state=%08X gfx=%08X main=%08X destroy=%08X init=%08X running=%u frames=%u divisor=%u\n",
@@ -93,8 +583,16 @@ RECOMP_PATCH void GameState_Update(GameState* gameState) {
     }
     gameState->main(gameState);
 
+    GraphDiag_NativeLog(samsungDiag, 74, diagCount, (u32)GameState_IsRunning(gameState), (u32)gameState->main,
+                        (u32)gameState->init);
+
     if (logDiag) {
         recomp_printf("[GraphDiag] GameState_Update main returned #%u pauseBg=%d\n", diagCount, R_PAUSE_BG_PRERENDER_STATE);
+    }
+
+    if (samsungDiag && !GameState_IsRunning(gameState)) {
+        GraphDiag_NativeLog(samsungDiag, 75, diagCount, (u32)gameState, (u32)gameState->init, (u32)gameState->size);
+        return;
     }
 
     if (R_PAUSE_BG_PRERENDER_STATE != PAUSE_BG_PRERENDER_PROCESS) {
@@ -114,6 +612,61 @@ RECOMP_PATCH void GameState_Update(GameState* gameState) {
     if (logDiag) {
         recomp_printf("[GraphDiag] GameState_Update end #%u\n", diagCount);
     }
+}
+
+RECOMP_PATCH void GameState_SetFrameBuffer(GraphicsContext* gfxCtx) {
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    if (!samsungDiag) {
+        OPEN_DISPS(gfxCtx);
+
+        gSPSegment(POLY_OPA_DISP++, 0x00, NULL);
+        gSPSegment(POLY_OPA_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+        gSPSegment(POLY_XLU_DISP++, 0x00, NULL);
+        gSPSegment(POLY_XLU_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+        gSPSegment(OVERLAY_DISP++, 0x00, NULL);
+        gSPSegment(OVERLAY_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+
+        CLOSE_DISPS(gfxCtx);
+        return;
+    }
+
+    if (gfxCtx == NULL) {
+        GraphDiag_NativeLog(samsungDiag, 83, 0x00, 0, 0, 0);
+        return;
+    }
+
+    GraphDiag_NativeLog(samsungDiag, 80, (u32)gfxCtx, (u32)gfxCtx->polyOpa.p, (u32)gfxCtx->polyXlu.p,
+                        (u32)gfxCtx->overlay.p);
+    GraphDiag_NativeLog(samsungDiag, 81, (u32)gfxCtx->curFrameBuffer, (u32)gfxCtx->polyOpa.start,
+                        (u32)gfxCtx->polyXlu.start, (u32)gfxCtx->overlay.start);
+
+    if ((gfxCtx->polyOpa.p == NULL) || (gfxCtx->polyXlu.p == NULL) || (gfxCtx->overlay.p == NULL)) {
+        GraphDiag_NativeLog(samsungDiag, 83, 0x01, (u32)gfxCtx->polyOpa.p, (u32)gfxCtx->polyXlu.p,
+                            (u32)gfxCtx->overlay.p);
+        return;
+    }
+
+    if ((((uintptr_t)gfxCtx->polyOpa.p & 0x80000000U) == 0) ||
+        (((uintptr_t)gfxCtx->polyXlu.p & 0x80000000U) == 0) ||
+        (((uintptr_t)gfxCtx->overlay.p & 0x80000000U) == 0)) {
+        GraphDiag_NativeLog(samsungDiag, 83, 0x02, (u32)gfxCtx->polyOpa.p, (u32)gfxCtx->polyXlu.p,
+                            (u32)gfxCtx->overlay.p);
+        return;
+    }
+
+    OPEN_DISPS(gfxCtx);
+
+    gSPSegment(POLY_OPA_DISP++, 0x00, NULL);
+    gSPSegment(POLY_OPA_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+    gSPSegment(POLY_XLU_DISP++, 0x00, NULL);
+    gSPSegment(POLY_XLU_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+    gSPSegment(OVERLAY_DISP++, 0x00, NULL);
+    gSPSegment(OVERLAY_DISP++, 0x0F, gfxCtx->curFrameBuffer);
+
+    CLOSE_DISPS(gfxCtx);
+    GraphDiag_NativeLog(samsungDiag, 82, (u32)gfxCtx, (u32)gfxCtx->polyOpa.p, (u32)gfxCtx->polyXlu.p,
+                        (u32)gfxCtx->overlay.p);
 }
 
 void recomp_crash(const char* err) {
@@ -159,6 +712,10 @@ RECOMP_PATCH void Graph_ExecuteAndDraw(GraphicsContext* gfxCtx, GameState* gameS
     }
 
     GameState_Update(gameState);
+    if (recomp_android_should_use_sync_boot_dma() && !GameState_IsRunning(gameState)) {
+        GraphDiag_NativeLog(true, 76, diagCount, (u32)gameState, (u32)gameState->init, (u32)gameState->size);
+        return;
+    }
     if (logDiag) {
         recomp_printf("[GraphDiag] Graph_ExecuteAndDraw update returned #%u frame=%u\n", diagCount, gameState->frames);
     }

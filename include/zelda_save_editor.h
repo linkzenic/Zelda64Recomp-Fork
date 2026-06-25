@@ -114,6 +114,7 @@ void set_snapshot_value(ValueId id, int32_t value);
 int32_t get_snapshot_value(ValueId id);
 void set_pending_value(ValueId id, int32_t value);
 int32_t get_pending_value(ValueId id);
+bool has_snapshot();
 bool should_apply_pending();
 void clear_pending();
 

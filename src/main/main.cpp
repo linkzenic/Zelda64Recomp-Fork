@@ -572,6 +572,9 @@ extern "C" void recomp_save_editor_should_apply_pending(uint8_t* rdram, recomp_c
 extern "C" void recomp_save_editor_clear_pending(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_disable_rumble(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_android_should_use_sync_boot_dma(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_android_reset_effect_ss_table(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_android_get_entrance_scene_spawn(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_android_load_yaz0(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
 
 // array of supported GameEntry objects
@@ -949,6 +952,9 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_set_3ds_clock_state);
     REGISTER_FUNC(recomp_android_should_disable_rumble);
     REGISTER_FUNC(recomp_android_should_use_sync_boot_dma);
+    REGISTER_FUNC(recomp_android_reset_effect_ss_table);
+    REGISTER_FUNC(recomp_android_get_entrance_scene_spawn);
+    REGISTER_FUNC(recomp_android_load_yaz0);
     recompui::register_ui_exports();
     recomputil::register_data_api_exports();
     ZELDA_ANDROID_STAGE("registered exports");

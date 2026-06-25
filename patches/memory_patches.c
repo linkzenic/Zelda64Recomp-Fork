@@ -1,4 +1,6 @@
 #include "patches.h"
+#include "input.h"
+#include "misc_funcs.h"
 
 // @recomp Leave the entire KSEG0 range unmodified when translating to a virtual address. This will allow
 // using the entirety of the extended RAM address space for custom assets. 
@@ -22,6 +24,8 @@ RECOMP_PATCH void AnimationContext_SetLoadFrame(PlayState* play, PlayerAnimation
 
     if (task != NULL) {
         PlayerAnimationHeader* playerAnimHeader = Lib_SegmentedToVirtual(animation);
+        size_t frameSize = sizeof(Vec3s) * limbCount + sizeof(s16);
+        uintptr_t rom = LINK_ANIMETION_OFFSET(playerAnimHeader->linkAnimSegment, frameSize * frame);
         s32 pad;
 
         osCreateMesgQueue(&task->data.load.msgQueue, task->data.load.msg,
@@ -32,11 +36,14 @@ RECOMP_PATCH void AnimationContext_SetLoadFrame(PlayState* play, PlayerAnimation
             Lib_MemCpy(frameTable, ((u8*)playerAnimHeader->segmentVoid) + (sizeof(Vec3s) * limbCount + sizeof(s16)) * frame,
                 sizeof(Vec3s) * limbCount + sizeof(s16));
         }
+        else if (recomp_android_should_use_sync_boot_dma()) {
+            recomp_measure_latency(97, 0x40, (u32)rom, (u32)(uintptr_t)frameTable, (u32)frameSize);
+            recomp_load_overlays(rom, frameTable, frameSize);
+            osSendMesg(&task->data.load.msgQueue, NULL, OS_MESG_NOBLOCK);
+        }
         else {
             DmaMgr_SendRequestImpl(
-                &task->data.load.req, frameTable,
-                LINK_ANIMETION_OFFSET(playerAnimHeader->linkAnimSegment, (sizeof(Vec3s) * limbCount + sizeof(s16)) * frame),
-                sizeof(Vec3s) * limbCount + sizeof(s16), 0, &task->data.load.msgQueue, NULL);
+                &task->data.load.req, frameTable, rom, frameSize, 0, &task->data.load.msgQueue, NULL);
         }
     }
 }

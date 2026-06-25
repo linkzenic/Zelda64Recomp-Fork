@@ -67,6 +67,7 @@
                             <button
                                 id="custom_driver_select"
                                 class="config-option__action-label"
+                                data-class-config-option__action-label--selected="android_custom_vulkan_driver_active"
                                 data-event-click="select_gpu_driver"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
@@ -77,6 +78,7 @@
                             <button
                                 id="custom_driver_system"
                                 class="config-option__action-label"
+                                data-class-config-option__action-label--selected="!android_custom_vulkan_driver_active"
                                 data-event-click="use_system_gpu_driver"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"

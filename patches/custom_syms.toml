@@ -6,6 +6,7 @@ size = 0x0
 
 symbols = [
     # Alternate references to symbols that would otherwise be relocated
+    { name = "gLoBuffer", vram = 0x80000500 },
     { name = "Setup_Init_NORELOCATE", vram = 0x80173338 }, # Not relocatable, but here for uniformity with the other gamestate funcs
     { name = "MapSelect_Init_NORELOCATE", vram = 0x80801B4C },
     { name = "ConsoleLogo_Init_NORELOCATE", vram = 0x8080074C },

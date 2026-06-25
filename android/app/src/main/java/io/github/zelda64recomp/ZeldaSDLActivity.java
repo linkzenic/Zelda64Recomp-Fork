@@ -65,6 +65,7 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final int REQUEST_OPEN_MOD_FILES = 0x5A66;
     private static final int REQUEST_OPEN_DRIVER_FILE = 0x5A67;
     private static final int REQUEST_OPEN_CLOCK_TEXTURE_FILE = 0x5A68;
+    private static final int REQUEST_OPEN_JSON_FILE = 0x5A69;
     private static final String PUBLIC_FOLDER_NAME = "Zelda64";
     private static final String PREFS_NAME = "io.github.zelda64recomp.prefs";
     private static final String PREF_TOUCH_CONTROLS_DISABLED = "touchControlsDisabled";
@@ -665,6 +666,34 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         });
     }
 
+    public static void openJsonFileDialog() {
+        ZeldaSDLActivity activity = currentActivity;
+        if (activity == null) {
+            Log.w(TAG, "openJsonFileDialog requested without an active activity");
+            nativeOnFileDialogResult(false, "");
+            return;
+        }
+
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                        "application/json",
+                        "text/json",
+                        "text/plain",
+                        "application/octet-stream"
+                });
+                activity.startActivityForResult(intent, REQUEST_OPEN_JSON_FILE);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to launch JSON file picker", e);
+                activity.appendLog("Failed to launch JSON file picker", e);
+                nativeOnFileDialogResult(false, "");
+            }
+        });
+    }
+
     public static void openModFileDialog() {
         ZeldaSDLActivity activity = currentActivity;
         if (activity == null) {
@@ -774,6 +803,15 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
                 handlePickedModFiles(data);
             } else {
                 nativeOnFileDialogMultipleResult(false, new String[0]);
+            }
+            return;
+        }
+
+        if (requestCode == REQUEST_OPEN_JSON_FILE) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                handlePickedJsonFile(data.getData());
+            } else {
+                nativeOnFileDialogResult(false, "");
             }
             return;
         }
@@ -1342,6 +1380,14 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         return importDir;
     }
 
+    private File getJsonImportDir() {
+        File importDir = new File(getCacheDir(), "json_imports");
+        if (!importDir.exists() && !importDir.mkdirs()) {
+            Log.w(TAG, "Failed to create JSON import dir: " + importDir);
+        }
+        return importDir;
+    }
+
     private void notifyIfPublicStorageNowAvailable() {
         if (usingPublicDataDir) {
             return;
@@ -1389,6 +1435,33 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             nativeOnFileDialogResult(true, outputFile.getAbsolutePath());
         } catch (Exception e) {
             Log.e(TAG, "Failed to import selected file", e);
+            nativeOnFileDialogResult(false, "");
+        }
+    }
+
+    private void handlePickedJsonFile(Uri uri) {
+        try {
+            File importDir = getJsonImportDir();
+            String displayName = getDisplayName(uri);
+            File outputFile = uniqueFileForName(importDir, sanitizeFileName(displayName));
+
+            try (InputStream input = getContentResolver().openInputStream(uri);
+                 FileOutputStream output = new FileOutputStream(outputFile)) {
+                if (input == null) {
+                    throw new IOException("Content resolver returned null stream for " + uri);
+                }
+
+                byte[] buffer = new byte[256 * 1024];
+                int bytesRead;
+                while ((bytesRead = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, bytesRead);
+                }
+            }
+
+            Log.i(TAG, "Copied selected JSON to " + outputFile.getAbsolutePath());
+            nativeOnFileDialogResult(true, outputFile.getAbsolutePath());
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to import selected JSON file", e);
             nativeOnFileDialogResult(false, "");
         }
     }

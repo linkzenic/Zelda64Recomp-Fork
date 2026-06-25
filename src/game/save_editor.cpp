@@ -9,6 +9,7 @@ namespace {
     std::mutex save_editor_mutex;
     std::array<int32_t, ValueCount> snapshot_values{};
     std::array<int32_t, ValueCount> pending_values{};
+    bool snapshot_ready = false;
     bool pending_initialized = false;
     bool pending_apply = false;
 
@@ -23,6 +24,7 @@ void set_snapshot_value(ValueId id, int32_t value) {
     }
 
     std::lock_guard lock{ save_editor_mutex };
+    snapshot_ready = true;
     snapshot_values[id] = value;
     if (!pending_initialized) {
         pending_values[id] = value;
@@ -64,6 +66,11 @@ int32_t get_pending_value(ValueId id) {
 bool should_apply_pending() {
     std::lock_guard lock{ save_editor_mutex };
     return pending_apply;
+}
+
+bool has_snapshot() {
+    std::lock_guard lock{ save_editor_mutex };
+    return snapshot_ready;
 }
 
 void clear_pending() {

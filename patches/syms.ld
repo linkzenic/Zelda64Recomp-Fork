@@ -1,4 +1,5 @@
 __start = 0x80000000;
+gLoBuffer = 0x80000500;
 
 /* Dummy addresses that get recompiled into function calls */
 recomp_puts = 0x8F000000;
@@ -65,6 +66,9 @@ recomp_save_editor_set_snapshot_value = 0x8F000104;
 recomp_save_editor_get_pending_value = 0x8F000108;
 recomp_save_editor_should_apply_pending = 0x8F00010C;
 recomp_save_editor_clear_pending = 0x8F000110;
+recomp_android_reset_effect_ss_table = 0x8F000114;
+recomp_android_get_entrance_scene_spawn = 0x8F000118;
+recomp_android_load_yaz0 = 0x8F00011C;
 osCreateThread_recomp = 0x8F0000E0;
 osStartThread_recomp = 0x8F0000E4;
 osStopThread_recomp = 0x8F0000E8;

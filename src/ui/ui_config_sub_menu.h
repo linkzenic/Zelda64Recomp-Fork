@@ -32,6 +32,8 @@ public:
     void set_description(std::string_view description);
     void set_hover_callback(std::function<void(ConfigOptionElement *, bool)> callback);
     void set_focus_callback(std::function<void(const std::string &, bool)> callback);
+    virtual void set_large_touch_style(bool enabled);
+    virtual void set_option_enabled(bool enabled);
     const std::string &get_description() const;
     void set_nav_auto(NavDirection dir) override { get_focus_element()->set_nav_auto(dir); }
     void set_nav_none(NavDirection dir) override { get_focus_element()->set_nav_none(dir); }
@@ -50,6 +52,7 @@ protected:
 public:
     ConfigOptionSlider(Element *parent, double value, double min_value, double max_value, double step_value, bool percent, std::function<void(const std::string &, double)> callback);
     Element* get_focus_element() override { return slider; }
+    void set_large_touch_style(bool enabled) override;
 };
 
 class ConfigOptionTextInput : public ConfigOptionElement {
@@ -62,6 +65,7 @@ protected:
 public:
     ConfigOptionTextInput(Element *parent, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
     Element* get_focus_element() override { return text_input; }
+    void set_large_touch_style(bool enabled) override;
 };
 
 class ConfigOptionRadio : public ConfigOptionElement {
@@ -74,6 +78,36 @@ protected:
 public:
     ConfigOptionRadio(Element *parent, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
     Element* get_focus_element() override { return radio; }    
+    void set_large_touch_style(bool enabled) override;
+    void set_option_enabled(bool enabled) override;
+};
+
+class ConfigOptionToggle : public ConfigOptionElement {
+protected:
+    Button *button = nullptr;
+    bool value = false;
+    std::function<void(const std::string &, bool)> callback;
+
+    void toggle_value();
+    void sync_button_text();
+    std::string_view get_type_name() override { return "ConfigOptionToggle"; }
+public:
+    ConfigOptionToggle(Element *parent, bool value, std::function<void(const std::string &, bool)> callback);
+    Element* get_focus_element() override { return button; }
+    void set_large_touch_style(bool enabled) override;
+};
+
+class ConfigOptionButton : public ConfigOptionElement {
+protected:
+    Button *button = nullptr;
+    std::function<void(const std::string &)> callback;
+
+    void button_pressed();
+    std::string_view get_type_name() override { return "ConfigOptionButton"; }
+public:
+    ConfigOptionButton(Element *parent, std::string_view button_text, std::function<void(const std::string &)> callback);
+    Element* get_focus_element() override { return button; }
+    void set_large_touch_style(bool enabled) override;
 };
 
 class ConfigSubMenu : public Element {
@@ -87,10 +121,12 @@ private:
     ScrollContainer *config_scroll_container = nullptr;
     std::vector<ConfigOptionElement *> config_option_elements;
     ConfigOptionElement * description_option_element = nullptr;
+    bool back_button_visible = true;
+    bool large_touch_style = false;
 
     void back_button_pressed();
     void set_description_option_element(ConfigOptionElement *option, bool active);
-    void add_option(ConfigOptionElement *option, std::string_view id, std::string_view name, std::string_view description);
+    ConfigOptionElement *add_option(ConfigOptionElement *option, std::string_view id, std::string_view name, std::string_view description);
 protected:
     std::string_view get_type_name() override { return "ConfigSubMenu"; }
 public:
@@ -100,9 +136,13 @@ public:
     void clear_options();
     void set_header_visible(bool visible);
     void set_back_button_visible(bool visible);
-    void add_slider_option(std::string_view id, std::string_view name, std::string_view description, double value, double min, double max, double step, bool percent, std::function<void(const std::string &, double)> callback);
-    void add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
-    void add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
+    void set_description_visible(bool visible);
+    void set_large_touch_style(bool enabled);
+    ConfigOptionElement *add_slider_option(std::string_view id, std::string_view name, std::string_view description, double value, double min, double max, double step, bool percent, std::function<void(const std::string &, double)> callback);
+    ConfigOptionElement *add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
+    ConfigOptionElement *add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
+    ConfigOptionElement *add_toggle_option(std::string_view id, std::string_view name, std::string_view description, bool value, std::function<void(const std::string &, bool)> callback);
+    ConfigOptionElement *add_button_option(std::string_view id, std::string_view name, std::string_view description, std::string_view button_text, std::function<void(const std::string &)> callback);
     void add_section_header(std::string_view name);
 };
 

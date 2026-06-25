@@ -5,6 +5,11 @@
 
 DECLARE_FUNC(void, recomp_load_overlays, u32 rom, void* ram, u32 size);
 DECLARE_FUNC(void, recomp_puts, const char* data, u32 size);
+DECLARE_FUNC(void, recomp_measure_latency, s32 stage, u32 a, u32 b, u32 c, u32 d);
+DECLARE_FUNC(s32, recomp_android_load_yaz0, u32 rom, u32 compressedSize, void* dst, u32 expectedSize);
+DECLARE_FUNC(void, recomp_android_reset_effect_ss_table, void* table, u32 count);
+DECLARE_FUNC(void, recomp_android_get_entrance_scene_spawn, void* sceneEntranceTable, u32 entrance, s32* sceneIdOut,
+             s32* spawnNumOut);
 DECLARE_FUNC(void, recomp_exit);
 DECLARE_FUNC(void, recomp_handle_quicksave_actions, OSMesgQueue* enter_mq, OSMesgQueue* exit_mq);
 DECLARE_FUNC(void, recomp_handle_quicksave_actions_main, OSMesgQueue* enter_mq, OSMesgQueue* exit_mq);

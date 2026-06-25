@@ -10,6 +10,7 @@
 #include "z64viszbuf.h"
 #include "z64rumble.h"
 #include "input.h"
+#include "misc_funcs.h"
 
 void recomp_set_current_frame_poll_id();
 void PadMgr_HandleRetrace(void);
@@ -196,7 +197,6 @@ RECOMP_PATCH void PadMgr_GetInput2(Input* inputs, s32 gameRequest) {
 
 extern CfbInfo sGraphCfbInfos[3];
 u32 recomp_time_us();
-void recomp_measure_latency();
 void* osViGetCurrentFramebuffer_recomp();
 
 OSMesgQueue *rdp_queue_ptr = NULL;
@@ -336,22 +336,53 @@ extern VisMono sGameVisMono;
 extern ViMode sGameViMode;
 
 RECOMP_PATCH void GameState_Destroy(GameState* gameState) {
-    AudioMgr_StopAllSfxExceptSystem();
-    Audio_Update();
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    if (samsungDiag) {
+        recomp_measure_latency(40, (u32)gameState, (u32)gameState->destroy, (u32)gameState->init, gameState->size);
+    }
+    if (!samsungDiag) {
+        AudioMgr_StopAllSfxExceptSystem();
+        Audio_Update();
+    } else {
+        recomp_measure_latency(41, (u32)gameState, (u32)gameState->destroy, 0, 0);
+        recomp_measure_latency(42, (u32)gameState, (u32)gameState->destroy, 0, 0);
+    }
 
     // @recomp The wait for the gfx task was moved to directly after submission, so it's not needed here.
     // osRecvMesg(&gameState->gfxCtx->queue, NULL, OS_MESG_BLOCK);
 
     if (gameState->destroy != NULL) {
+        if (samsungDiag) {
+            recomp_measure_latency(43, (u32)gameState, (u32)gameState->destroy, 0, 0);
+        }
         gameState->destroy(gameState);
+        if (samsungDiag) {
+            recomp_measure_latency(44, (u32)gameState, (u32)gameState->destroy, 0, 0);
+        }
     }
 
+    if (samsungDiag) {
+        recomp_measure_latency(45, (u32)gameState, 0, 0, 0);
+    }
     Rumble_Destroy();
+    if (samsungDiag) {
+        recomp_measure_latency(46, (u32)gameState, 0, 0, 0);
+    }
     SpeedMeter_Destroy(&sGameSpeedMeter);
     VisCvg_Destroy(&sGameVisCvg);
     VisZbuf_Destroy(&sGameVisZbuf);
     VisMono_Destroy(&sGameVisMono);
     ViMode_Destroy(&sGameViMode);
+    if (samsungDiag) {
+        recomp_measure_latency(47, (u32)gameState, 0, 0, 0);
+    }
     THA_Destroy(&gameState->tha);
+    if (samsungDiag) {
+        recomp_measure_latency(48, (u32)gameState, 0, 0, 0);
+    }
     GameAlloc_Cleanup(&gameState->alloc);
+    if (samsungDiag) {
+        recomp_measure_latency(49, (u32)gameState, 0, 0, 0);
+    }
 }

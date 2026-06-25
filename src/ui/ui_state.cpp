@@ -200,6 +200,7 @@ public:
     std::unique_ptr<SystemInterface_SDL> system_interface;
     recompui::RmlRenderInterface_RT64 render_interface;
     Rml::Context* context;
+    bool debugger_initialized = false;
     recompui::UiEventListenerInstancer event_listener_instancer;
 
     UIState(const UIState& rhs) = delete;
@@ -240,7 +241,12 @@ public:
         launcher_menu_controller->make_bindings(context);
         config_menu_controller->make_bindings(context);
 
-        Rml::Debugger::Initialise(context);
+        if (!recomp::android_should_use_sync_boot_dma()) {
+            Rml::Debugger::Initialise(context);
+            debugger_initialized = true;
+        } else {
+            ZELDA_UI_LOG("Rml debugger skipped for Samsung sync boot path");
+        }
         {
             struct FontFace {
                 const char* filename;
@@ -1138,7 +1144,7 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
                 non_mouse_interacted = true;
                 kb_interacted = true;
                 if (cur_event.key.keysym.scancode == SDL_Scancode::SDL_SCANCODE_F8) {
-                    if (zelda64::get_debug_mode_enabled()) {
+                    if (zelda64::get_debug_mode_enabled() && ui_state->debugger_initialized) {
                         Rml::Debugger::SetVisible(!Rml::Debugger::IsVisible());
                     }
                 }
@@ -1281,7 +1287,9 @@ void deinit_hook() {
     recompui::destroy_all_contexts();
 
     std::lock_guard lock {ui_state_mutex};
-    Rml::Debugger::Shutdown();
+    if (ui_state && ui_state->debugger_initialized) {
+        Rml::Debugger::Shutdown();
+    }
     Rml::Shutdown();
     ui_state->unload();
     ui_state.reset();

@@ -175,6 +175,29 @@ namespace zelda64 {
 #endif
     }
 
+    void open_json_file_dialog(std::function<void(bool success, const std::filesystem::path& path)> callback) {
+#ifdef __ANDROID__
+        {
+            std::lock_guard lock(file_dialog_mutex);
+            if (file_dialog_callback) {
+                callback(false, {});
+                return;
+            }
+            file_dialog_callback = std::move(callback);
+        }
+
+        if (!launch_android_file_dialog("openJsonFileDialog")) {
+            finish_android_file_dialog(false, {});
+        }
+#elif defined(__APPLE__)
+        dispatch_on_ui_thread([callback]() {
+            perform_file_dialog_operation(callback);
+        });
+#else
+        perform_file_dialog_operation(callback);
+#endif
+    }
+
     void open_file_dialog_multiple(std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback) {
 #ifdef __ANDROID__
         {

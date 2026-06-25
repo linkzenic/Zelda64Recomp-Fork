@@ -1,4 +1,6 @@
 #include "patches.h"
+#include "input.h"
+#include "misc_funcs.h"
 #include "transform_ids.h"
 #include "overlays/actors/ovl_En_Hanabi/z_en_hanabi.h"
 #include "overlays/actors/ovl_Demo_Kankyo/z_demo_kankyo.h"
@@ -9,8 +11,7 @@ extern EffectSsInfo sEffectSsInfo;
 #define MAX_PARTICLES 256
 u8 particle_reset_list[MAX_PARTICLES];
 
-// @recomp Patched to track that the particle has been reset.
-RECOMP_PATCH void EffectSS_ResetEntry(EffectSs* particle) {
+static void EffectSS_ResetEntryByIndex(EffectSs* particle, u32 particleIndex) {
     u32 i;
 
     particle->type = EFFECT_SS_MAX;
@@ -30,12 +31,19 @@ RECOMP_PATCH void EffectSS_ResetEntry(EffectSs* particle) {
         particle->regs[i] = 0;
     }
 
-    // @recomp Get this particle's index and mark it as being reset.
-    u32 particle_index = particle - &sEffectSsInfo.dataTable[0];
-    if (particle_index >= sEffectSsInfo.size) {
+    if (particleIndex >= sEffectSsInfo.size) {
         recomp_crash("Invalid particle was reset!\n");
     }
-    particle_reset_list[particle_index] = true;
+    if (!recomp_android_should_use_sync_boot_dma()) {
+        particle_reset_list[particleIndex] = true;
+    }
+}
+
+// @recomp Patched to track that the particle has been reset.
+RECOMP_PATCH void EffectSS_ResetEntry(EffectSs* particle) {
+    // @recomp Get this particle's index and mark it as being reset.
+    u32 particle_index = particle - &sEffectSsInfo.dataTable[0];
+    EffectSS_ResetEntryByIndex(particle, particle_index);
 }
 
 // @recomp Check numEntries to be sure enough space has been allocated for tracking particle statuses.
@@ -43,6 +51,11 @@ RECOMP_PATCH void EffectSS_Init(PlayState* play, s32 numEntries) {
     u32 i;
     EffectSs* effectsSs;
     EffectSsOverlay* overlay;
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
+
+    if (samsungDiag) {
+        recomp_measure_latency(92, 0x20, (u32)play, (u32)numEntries, 0);
+    }
 
     // @recomp Perform the numEntries check.
     if (numEntries > MAX_PARTICLES) {
@@ -56,9 +69,42 @@ RECOMP_PATCH void EffectSS_Init(PlayState* play, s32 numEntries) {
     sEffectSsInfo.searchIndex = 0;
     sEffectSsInfo.size = numEntries;
 
-    for (effectsSs = &sEffectSsInfo.dataTable[0]; effectsSs < &sEffectSsInfo.dataTable[sEffectSsInfo.size];
-         effectsSs++) {
-        EffectSS_ResetEntry(effectsSs);
+    if (samsungDiag) {
+        recomp_measure_latency(92, 0x21, (u32)sEffectSsInfo.dataTable, (u32)sEffectSsInfo.size,
+                               (u32)(numEntries * sizeof(EffectSs)));
+    }
+
+    if (samsungDiag) {
+        recomp_android_reset_effect_ss_table(sEffectSsInfo.dataTable, sEffectSsInfo.size);
+    }
+    else {
+        for (i = 0; i < MAX_PARTICLES; i++) {
+            particle_reset_list[i] = false;
+        }
+
+        effectsSs = &sEffectSsInfo.dataTable[0];
+        for (i = 0; i < sEffectSsInfo.size; i++, effectsSs++) {
+            effectsSs->type = EFFECT_SS_MAX;
+            effectsSs->accel.x = effectsSs->accel.y = effectsSs->accel.z = 0;
+            effectsSs->velocity.x = effectsSs->velocity.y = effectsSs->velocity.z = 0;
+            effectsSs->vec.x = effectsSs->vec.y = effectsSs->vec.z = 0;
+            effectsSs->pos.x = effectsSs->pos.y = effectsSs->pos.z = 0;
+            effectsSs->life = -1;
+            effectsSs->flags = 0;
+            effectsSs->priority = 128;
+            effectsSs->draw = NULL;
+            effectsSs->update = NULL;
+            effectsSs->gfx = NULL;
+            effectsSs->actor = NULL;
+
+            for (u32 regIndex = 0; regIndex < ARRAY_COUNT(effectsSs->regs); regIndex++) {
+                effectsSs->regs[regIndex] = 0;
+            }
+        }
+    }
+
+    if (samsungDiag) {
+        recomp_measure_latency(92, 0x22, (u32)sEffectSsInfo.dataTable, (u32)sEffectSsInfo.size, 0);
     }
 
     overlay = &gParticleOverlayTable[0];
@@ -66,16 +112,21 @@ RECOMP_PATCH void EffectSS_Init(PlayState* play, s32 numEntries) {
         overlay->loadedRamAddr = NULL;
         overlay++;
     }
+
+    if (samsungDiag) {
+        recomp_measure_latency(92, 0x23, (u32)gParticleOverlayTable, (u32)EFFECT_SS_MAX, 0);
+    }
 }
 
 // @recomp Add transform tags to particles
 RECOMP_PATCH void EffectSS_DrawParticle(PlayState* play, s32 index) {
     EffectSs* entry = &sEffectSsInfo.dataTable[index];
+    s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
 
     OPEN_DISPS(play->state.gfxCtx);
 
     // @recomp If this particle was just reset then skip interpolation.
-    if (particle_reset_list[index]) {
+    if (!samsungDiag && particle_reset_list[index]) {
         gEXMatrixGroupDecomposedSkipAll(POLY_OPA_DISP++, PARTICLE_TRANSFORM_ID_START + index, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
         gEXMatrixGroupDecomposedSkipAll(POLY_XLU_DISP++, PARTICLE_TRANSFORM_ID_START + index, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
     }
@@ -85,7 +136,9 @@ RECOMP_PATCH void EffectSS_DrawParticle(PlayState* play, s32 index) {
     }
 
     // @recomp Clear this particle's reset state.
-    particle_reset_list[index] = false;
+    if (!samsungDiag) {
+        particle_reset_list[index] = false;
+    }
     
     if (entry->draw != NULL) {
         entry->draw(play, index, entry);

@@ -1,11 +1,19 @@
 #include "patches.h"
 #include "audio/heap.h"
 #include "audio/load.h"
+#include "audiomgr.h"
 #include "input.h"
 #include "sfx.h"
 
 extern NoteSampleState gZeroedSampleState;
 extern u8 sSfxBankSizes[7];
+extern u8 sSfxRequestWriteIndex;
+extern u8 sSfxRequestReadIndex;
+extern u8 sSfxBankListEnd[7];
+extern u8 sSfxBankFreeListStart[7];
+extern u8 sSfxBankUnused[7];
+extern u8 gSfxBankMuted[7];
+extern u16 sSfxChannelLowVolumeFlag;
 extern SfxBankEntry sSfxPlayerBank[9];
 extern SfxBankEntry sSfxItemBank[12];
 extern SfxBankEntry sSfxEnvironmentBank[32];
@@ -16,10 +24,22 @@ extern SfxBankEntry sSfxVoiceBank[5];
 
 #define AUDIO_DIAG_MAX_SAMPLE_DMAS 0x100
 #define AUDIO_DIAG_SFX_RM_REQ_BY_ID 5
+#define AUDIO_DIAG_STATIC_MISC_POOL_SIZE 0x50000
+
+typedef struct AudioDiagSfxBankLerp {
+    f32 target;
+    f32 value;
+    f32 step;
+    u32 remainingFrames;
+} AudioDiagSfxBankLerp;
+
+extern AudioDiagSfxBankLerp sSfxBankLerp[7];
 
 static s32 AudioDiag_LogAllocCount = 0;
 static f32 sAudioDiagAdsrDecayTable[0x100] = { 1.0f };
 static SampleDma sAudioDiagSampleDmas[AUDIO_DIAG_MAX_SAMPLE_DMAS] = { { (u8*)1, 0, 0, 0, 0, 0, 0 } };
+static u8 sAudioDiagStaticMiscPool[AUDIO_DIAG_STATIC_MISC_POOL_SIZE] ALIGNED(16);
+static s32 sAudioDiagStaticMiscPoolActive = false;
 
 extern ReverbSettings reverbSettings0[3];
 extern ReverbSettings reverbSettings1[3];
@@ -37,6 +57,8 @@ extern ReverbSettings reverbSettingsC[3];
 extern ReverbSettings reverbSettingsD[3];
 extern ReverbSettings reverbSettingsE[3];
 extern ReverbSettings reverbSettingsF[2];
+
+void AudioHeap_InitPool(AudioAllocPool* pool, void* addr, size_t size);
 
 static s32 AudioDiag_PtrInPool(void* ptr, size_t size, AudioAllocPool* pool) {
     uintptr_t start;
@@ -77,6 +99,36 @@ static s32 AudioDiag_PoolLooksValid(AudioAllocPool* pool) {
     }
 
     return true;
+}
+
+static s32 AudioDiag_PoolLooksReasonable(AudioAllocPool* pool, size_t requestSize) {
+    if (!AudioDiag_PoolLooksValid(pool)) {
+        return false;
+    }
+
+    if (pool->size > 0x200000 || requestSize > 0x100000) {
+        return false;
+    }
+
+    return true;
+}
+
+static void AudioDiag_UseStaticMiscPool(const char* reason) {
+    if (!recomp_android_should_use_sync_boot_dma()) {
+        return;
+    }
+
+    if (sAudioDiagStaticMiscPoolActive && AudioDiag_PoolLooksReasonable(&gAudioCtx.miscPool, 0)) {
+        return;
+    }
+
+    recomp_printf("[AudioDiag] Using static Samsung misc pool reason=%s oldStart=%p oldCur=%p oldSize=%d oldCount=%d static=%p size=%d\n",
+                  reason, gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr, gAudioCtx.miscPool.size,
+                  gAudioCtx.miscPool.count, sAudioDiagStaticMiscPool, AUDIO_DIAG_STATIC_MISC_POOL_SIZE);
+
+    bzero(sAudioDiagStaticMiscPool, sizeof(sAudioDiagStaticMiscPool));
+    AudioHeap_InitPool(&gAudioCtx.miscPool, sAudioDiagStaticMiscPool, sizeof(sAudioDiagStaticMiscPool));
+    sAudioDiagStaticMiscPoolActive = true;
 }
 
 static s32 AudioDiag_PtrInReverbSettingsTable(ReverbSettings* ptr, ReverbSettings* table, size_t count) {
@@ -197,6 +249,20 @@ static s32 AudioDiag_SfxBankPtrLooksValid(u8 bankId) {
     return expected != NULL && gSfxBanks[bankId] == expected && sSfxBankSizes[bankId] == expectedSize;
 }
 
+static void AudioDiag_RepairSfxBankTable(void) {
+    u8 bankId;
+
+    for (bankId = 0; bankId < ARRAY_COUNT(gSfxBanks); bankId++) {
+        if (!AudioDiag_SfxBankPtrLooksValid(bankId)) {
+            recomp_printf("[AudioDiag] RepairSfxBank bank=%d ptr=%p expected=%p size=%d expectedSize=%d\n",
+                          bankId, gSfxBanks[bankId], AudioDiag_ExpectedSfxBank(bankId),
+                          sSfxBankSizes[bankId], AudioDiag_ExpectedSfxBankSize(bankId));
+            gSfxBanks[bankId] = AudioDiag_ExpectedSfxBank(bankId);
+            sSfxBankSizes[bankId] = AudioDiag_ExpectedSfxBankSize(bankId);
+        }
+    }
+}
+
 void AudioHeap_InitReverb(s32 reverbIndex, ReverbSettings* settings, s32 isFirstInit);
 void* AudioHeap_AllocZeroedAttemptExternal(AudioAllocPool* pool, size_t size);
 void* AudioHeap_AllocDmaMemoryZeroed(AudioAllocPool* pool, size_t size);
@@ -206,6 +272,114 @@ void AudioHeap_DiscardSequence(s32 seqId);
 void AudioHeap_DiscardSampleBank(s32 sampleBankId);
 void AudioSfx_RemoveBankEntry(u8 bankId, u8 entryIndex);
 void AudioSfx_RemoveMatchingRequests(u8 aspect, SfxBankEntry* entry);
+AudioTask* AudioThread_Update(void);
+void AudioMgr_NotifyTaskDone(AudioMgr* audioMgr);
+void Sched_SendEntryMsg(SchedContext* sched);
+void Sched_SendAudioCancelMsg(SchedContext* sched);
+
+static s32 AudioDiag_AudioThreadReadyForRetrace(const char** reason) {
+    size_t noteBytes;
+    size_t sampleStateBytes;
+    size_t abiBytes;
+
+    if (!recomp_android_should_use_sync_boot_dma()) {
+        return true;
+    }
+
+    if (gAudioCtx.numNotes <= 0 || gAudioCtx.numNotes > 0x80) {
+        *reason = "numNotes";
+        return false;
+    }
+
+    if (gAudioCtx.audioBufferParameters.updatesPerFrame <= 0 ||
+        gAudioCtx.audioBufferParameters.updatesPerFrame > 0x20) {
+        *reason = "updatesPerFrame";
+        return false;
+    }
+
+    if (gAudioCtx.maxAudioCmds <= 0 || gAudioCtx.maxAudioCmds > 0x8000) {
+        *reason = "maxAudioCmds";
+        return false;
+    }
+
+    noteBytes = gAudioCtx.numNotes * sizeof(Note);
+    sampleStateBytes = gAudioCtx.audioBufferParameters.updatesPerFrame * gAudioCtx.numNotes * sizeof(NoteSampleState);
+    abiBytes = gAudioCtx.maxAudioCmds * sizeof(Acmd);
+
+    if (!AudioDiag_PtrInAudioPool(gAudioCtx.notes, noteBytes)) {
+        *reason = "notes";
+        return false;
+    }
+
+    if (!AudioDiag_PtrInAudioPool(gAudioCtx.sampleStateList, sampleStateBytes)) {
+        *reason = "sampleStateList";
+        return false;
+    }
+
+    if (!AudioDiag_PtrInAudioPool(gAudioCtx.abiCmdBufs[0], abiBytes) ||
+        !AudioDiag_PtrInAudioPool(gAudioCtx.abiCmdBufs[1], abiBytes)) {
+        *reason = "abiCmdBufs";
+        return false;
+    }
+
+    if (gAudioCtx.aiBuffers[0] == NULL || gAudioCtx.aiBuffers[1] == NULL || gAudioCtx.aiBuffers[2] == NULL) {
+        *reason = "aiBuffers";
+        return false;
+    }
+
+    return true;
+}
+
+RECOMP_PATCH void AudioSfx_Reset(void) {
+    u8 bankId;
+    u8 i;
+    u8 bankSize;
+
+    if (recomp_android_should_use_sync_boot_dma()) {
+        AudioDiag_RepairSfxBankTable();
+    }
+
+    sSfxRequestWriteIndex = 0;
+    sSfxRequestReadIndex = 0;
+    sSfxChannelLowVolumeFlag = 0;
+
+    for (bankId = 0; bankId < ARRAY_COUNT(gSfxBanks); bankId++) {
+        sSfxBankListEnd[bankId] = 0;
+        sSfxBankFreeListStart[bankId] = 1;
+        sSfxBankUnused[bankId] = 0;
+        gSfxBankMuted[bankId] = false;
+        sSfxBankLerp[bankId].value = 1.0f;
+        sSfxBankLerp[bankId].remainingFrames = 0;
+    }
+
+    for (bankId = 0; bankId < ARRAY_COUNT(gSfxBanks); bankId++) {
+        for (i = 0; i < MAX_CHANNELS_PER_BANK; i++) {
+            gActiveSfx[bankId][i].entryIndex = 0xFF;
+        }
+    }
+
+    for (bankId = 0; bankId < ARRAY_COUNT(gSfxBanks); bankId++) {
+        bankSize = sSfxBankSizes[bankId];
+
+        if (gSfxBanks[bankId] == NULL || bankSize < 2) {
+            recomp_printf("[AudioDiag] Reset invalid bank bank=%d ptr=%p size=%d\n",
+                          bankId, gSfxBanks[bankId], bankSize);
+            sSfxBankFreeListStart[bankId] = 0xFF;
+            continue;
+        }
+
+        gSfxBanks[bankId][0].prev = 0xFF;
+        gSfxBanks[bankId][0].next = 0xFF;
+
+        for (i = 1; i < bankSize - 1; i++) {
+            gSfxBanks[bankId][i].prev = i - 1;
+            gSfxBanks[bankId][i].next = i + 1;
+        }
+
+        gSfxBanks[bankId][i].prev = i - 1;
+        gSfxBanks[bankId][i].next = 0xFF;
+    }
+}
 
 RECOMP_PATCH void AudioSfx_StopById(u32 sfxId) {
     SfxBankEntry* entry;
@@ -303,6 +477,10 @@ RECOMP_PATCH void* AudioHeap_Alloc(AudioAllocPool* pool, size_t size) {
     u8* curAddr;
     uintptr_t cur;
     uintptr_t end;
+
+    if (pool == &gAudioCtx.miscPool && !AudioDiag_PoolLooksReasonable(pool, size)) {
+        AudioDiag_UseStaticMiscPool("alloc unreasonable misc pool");
+    }
 
     if (!AudioDiag_PoolLooksValid(pool)) {
         recomp_printf("[AudioDiag] Alloc invalid pool=%p start=%p cur=%p size=%d count=%d request=%d\n",
@@ -581,6 +759,13 @@ RECOMP_PATCH void AudioPlayback_InitNoteFreeList(void) {
     AudioPlayback_InitNoteLists(&gAudioCtx.noteFreeLists);
 
     if (!AudioDiag_PtrInPool(gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), &gAudioCtx.miscPool)) {
+        if (recomp_android_should_use_sync_boot_dma()) {
+            AudioDiag_UseStaticMiscPool("note free list invalid notes");
+            gAudioCtx.notes = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, gAudioCtx.numNotes * sizeof(Note));
+        }
+    }
+
+    if (!AudioDiag_PtrInPool(gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), &gAudioCtx.miscPool)) {
         recomp_printf("[AudioDiag] InitNoteFreeList invalid notes allocation notes=%p bytes=%d miscStart=%p miscSize=%d\n",
                       gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), gAudioCtx.miscPool.startAddr,
                       gAudioCtx.miscPool.size);
@@ -613,6 +798,13 @@ RECOMP_PATCH void AudioPlayback_NoteInitAll(void) {
     recomp_printf("[AudioDiag] NoteInitAll begin notes=%p numNotes=%d miscStart=%p miscCur=%p miscSize=%d miscCount=%d\n",
                   gAudioCtx.notes, gAudioCtx.numNotes, gAudioCtx.miscPool.startAddr, gAudioCtx.miscPool.curAddr,
                   gAudioCtx.miscPool.size, gAudioCtx.miscPool.count);
+
+    if (!AudioDiag_PtrInPool(gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), &gAudioCtx.miscPool)) {
+        if (recomp_android_should_use_sync_boot_dma()) {
+            AudioDiag_UseStaticMiscPool("note init invalid notes");
+            gAudioCtx.notes = AudioHeap_AllocZeroed(&gAudioCtx.miscPool, gAudioCtx.numNotes * sizeof(Note));
+        }
+    }
 
     if (!AudioDiag_PtrInPool(gAudioCtx.notes, gAudioCtx.numNotes * sizeof(Note), &gAudioCtx.miscPool)) {
         recomp_printf("[AudioDiag] NoteInitAll invalid notes allocation notes=%p bytes=%d miscStart=%p miscSize=%d\n",

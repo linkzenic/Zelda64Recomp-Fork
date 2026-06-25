@@ -6,6 +6,7 @@
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
 #include "overlays/actors/ovl_Obj_Warpstone/z_obj_warpstone.h"
 #include "misc_funcs.h"
+#include "input.h"
 
 #define SAVE_TYPE_AUTOSAVE 2 
 
@@ -525,7 +526,7 @@ RECOMP_PATCH s16 CutsceneManager_FindEntranceCsId(void) {
 }
 
 s32 spawn_entrance_from_autosave_entrance(s16 autosave_entrance) {
-    s32 scene_id = Entrance_GetSceneIdAbsolute(gSaveContext.save.entrance);
+    s32 scene_id = Entrance_GetSceneIdAbsolute(autosave_entrance);
     recomp_printf("Loaded entrance: %d in scene: %d\n", autosave_entrance, scene_id);
 
     switch (scene_id) {
@@ -546,6 +547,36 @@ s32 spawn_entrance_from_autosave_entrance(s16 autosave_entrance) {
         case SCENE_INISIE_BS: // Twinmold's Lair
             return ENTRANCE(STONE_TOWER_TEMPLE_INVERTED, 0);
     }
+}
+
+static s32 autosave_scene_id_is_valid(s32 scene_id) {
+    return (scene_id >= 0) && (scene_id < SCENE_MAX);
+}
+
+static void autosave_sanitize_samsung_load(void) {
+    s32 scene_id;
+
+    if (!recomp_android_should_use_sync_boot_dma() || (gSaveContext.save.isOwlSave != SAVE_TYPE_AUTOSAVE)) {
+        return;
+    }
+
+    scene_id = Entrance_GetSceneIdAbsolute(gSaveContext.save.entrance);
+    if (autosave_scene_id_is_valid(scene_id)) {
+        return;
+    }
+
+    gSaveContext.save.entrance = ENTRANCE(SOUTH_CLOCK_TOWN, 0);
+    gSaveContext.save.cutsceneIndex = 0;
+    gSaveContext.nextCutsceneIndex = 0;
+    gSaveContext.respawnFlag = 0;
+    gSaveContext.respawn[RESPAWN_MODE_DOWN].entrance = ENTR_LOAD_OPENING;
+    gSaveContext.showTitleCard = true;
+    gSaveContext.seqId = (u8)NA_BGM_DISABLED;
+    gSaveContext.ambienceId = AMBIENCE_ID_DISABLED;
+    gSaveContext.nextTransitionType = TRANS_NEXT_TYPE_DEFAULT;
+    gSaveContext.cutsceneTrigger = 0;
+    gSaveContext.chamberCutsceneNum = 0;
+    gSaveContext.nextDayTime = NEXT_TIME_NONE;
 }
 
 RECOMP_DECLARE_EVENT(recomp_on_load_save(FileSelectState* fileSelect, SramContext* sramCtx));
@@ -592,6 +623,8 @@ RECOMP_PATCH void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCt
             Lib_MemCpy(&gSaveContext, sramCtx->saveBuf, gFlashSaveSizes[phi_t1]);
         }
     }
+
+    autosave_sanitize_samsung_load();
 
     gSaveContext.save.saveInfo.playerData.magicLevel = 0;
 

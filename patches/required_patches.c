@@ -92,6 +92,43 @@ RECOMP_PATCH void Main_Init(void) {
 
 void Overlay_Relocate(void* allocatedRamAddr, OverlayRelocationSection* ovlRelocs, uintptr_t vramStart);
 
+static void AndroidDiag_LoadOverlayToRam(uintptr_t vromStart, void* dst, size_t size) {
+    DmaEntry* entry = DmaMgr_FindDmaEntry(vromStart);
+    s32 yaz0Status;
+
+    recomp_measure_latency(97, 0x70, (u32)vromStart, (u32)(uintptr_t)dst, (u32)size);
+
+    if (entry == NULL) {
+        recomp_measure_latency(97, 0x71, (u32)vromStart, (u32)(uintptr_t)dst, (u32)size);
+        recomp_load_overlays(vromStart, dst, size);
+        return;
+    }
+
+    recomp_measure_latency(97, 0x72, (u32)entry->vromStart, (u32)entry->vromEnd, (u32)entry->romStart);
+    recomp_measure_latency(97, 0x73, (u32)entry->romStart, (u32)entry->romEnd, (u32)size);
+
+    if (entry->romEnd == 0) {
+        recomp_load_overlays((entry->romStart + vromStart) - entry->vromStart, dst, size);
+        recomp_measure_latency(97, 0x74, (u32)((entry->romStart + vromStart) - entry->vromStart),
+                               (u32)(uintptr_t)dst, (u32)size);
+        return;
+    }
+
+    if ((vromStart != entry->vromStart) || (size != (entry->vromEnd - entry->vromStart))) {
+        recomp_measure_latency(97, 0x75, (u32)vromStart, (u32)entry->vromStart, (u32)size);
+        recomp_load_overlays(vromStart, dst, size);
+        return;
+    }
+
+    yaz0Status = recomp_android_load_yaz0(entry->romStart, entry->romEnd - entry->romStart, dst, size);
+    recomp_measure_latency(97, 0x76, (u32)yaz0Status, (u32)entry->romStart, (u32)(uintptr_t)dst);
+
+    if (yaz0Status != 0) {
+        recomp_load_overlays(vromStart, dst, size);
+        recomp_measure_latency(97, 0x77, (u32)yaz0Status, (u32)vromStart, (u32)size);
+    }
+}
+
 // @recomp Patched to load the overlay in the recomp runtime.
 RECOMP_PATCH size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* ramStart, void* ramEnd, void* allocatedRamAddr) {
     uintptr_t vramStart = (uintptr_t)ramStart;
@@ -114,11 +151,12 @@ RECOMP_PATCH size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* r
 
     end = (uintptr_t)allocatedRamAddr + size;
     if (syncBootDma) {
-        // Match the Samsung boot DMA workaround for overlay loads too. Other
-        // Android devices keep the original queued DMA path below.
-        recomp_printf("[OverlayLoadDiag] DmaMgr_DmaRomToRam begin\n");
-        DmaMgr_DmaRomToRam(vromStart, allocatedRamAddr, size);
-        recomp_printf("[OverlayLoadDiag] DmaMgr_DmaRomToRam end\n");
+        // Samsung devices can fault when actor overlays go through the raw
+        // DMA path. Load directly from the ROM mapping instead, preserving the
+        // same VROM-to-ROM and Yaz0 handling used by the safer Android loaders.
+        recomp_printf("[OverlayLoadDiag] samsung direct load begin\n");
+        AndroidDiag_LoadOverlayToRam(vromStart, allocatedRamAddr, size);
+        recomp_printf("[OverlayLoadDiag] samsung direct load end\n");
     } else {
         recomp_printf("[OverlayLoadDiag] DmaMgr_SendRequest0 begin\n");
         DmaMgr_SendRequest0(allocatedRamAddr, vromStart, size);
