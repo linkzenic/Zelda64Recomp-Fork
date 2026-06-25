@@ -43,6 +43,7 @@ namespace {
     const std::vector<std::string> bomb_bag_options{ "None", "20", "30", "40" };
     const std::vector<std::string> stick_upgrade_options{ "None", "10", "20", "30" };
     const std::vector<std::string> nut_upgrade_options{ "None", "20", "30", "40" };
+    const std::vector<std::string> tingle_map_options{ "Clock Town", "Woodfall", "Snowhead", "Romani", "Great Bay", "Stone Tower" };
 
     uint32_t setup_auto_apply = 0;
     uint32_t setup_target_file = 0;
@@ -833,6 +834,31 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
             [value_id](const std::string &, uint32_t new_value) { set_value(value_id, static_cast<int32_t>(new_value)); });
     };
 
+    auto add_tingle_maps = [this]() {
+        const std::array<ValueId, 6> tingle_map_ids{
+            TingleMapClockTown,
+            TingleMapWoodfall,
+            TingleMapSnowhead,
+            TingleMapRomaniRanch,
+            TingleMapGreatBay,
+            TingleMapStoneTower,
+        };
+        std::vector<bool> values;
+        values.reserve(tingle_map_ids.size());
+        for (ValueId id : tingle_map_ids) {
+            values.push_back(value(id) != 0);
+        }
+
+        config_sub_menu->add_multi_toggle_option(
+            "tingle_maps", "Tingle Maps", "Controls purchased Tingle regional maps and world-map visibility.",
+            tingle_map_options, values,
+            [tingle_map_ids](const std::string &, uint32_t index, bool new_value) {
+                if (index < tingle_map_ids.size()) {
+                    set_value(tingle_map_ids[index], new_value ? 1 : 0);
+                }
+            });
+    };
+
     switch (live_category) {
     case LiveCategory::Time:
         config_sub_menu->add_slider_option("day", "Day", "Sets the current three-day cycle day.", value(Day), 1, 4, 1, false,
@@ -849,7 +875,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         break;
     case LiveCategory::Health:
         add_radio("wallet", "Wallet", "Sets the active wallet upgrade.", Wallet, wallet_options);
-        add_slider("rupees", "Rupees", "Sets carried rupees.", Rupees, 0, 999, 1);
+        add_slider("rupees", "Rupees", "Sets carried rupees.", Rupees, 0, 500, 1);
         add_slider("bank", "Bank Rupees", "Sets banked rupees.", BankRupees, 0, 5000, 1);
         add_slider("hearts", "Heart Containers", "Sets maximum heart containers.", Hearts, 3, 20, 1);
         add_slider("heart_pieces", "Heart Pieces", "Sets the current heart piece count.", HeartPieces, 0, 3, 1);
@@ -886,6 +912,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_bool("letter_mama", "Letter to Mama", "Controls whether Letter to Mama is in inventory.", LetterMama);
         add_bool("letter_kafei", "Letter to Kafei", "Controls whether Letter to Kafei is in inventory.", LetterKafei);
         add_bool("pendant", "Pendant of Memories", "Controls whether the Pendant of Memories is in inventory.", PendantOfMemories);
+        add_tingle_maps();
         break;
     case LiveCategory::Masks:
         add_bool("deku_mask", "Deku Mask", "Controls whether the Deku Mask is in inventory.", DekuMask);
@@ -981,7 +1008,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
     SAVE_EDITOR_UI_LOG("SaveEditor UI section Health and Currency");
     config_sub_menu->add_section_header("Health and Currency");
     add_radio("wallet", "Wallet", "Sets the active wallet upgrade.", Wallet, wallet_options);
-    add_slider("rupees", "Rupees", "Sets carried rupees.", Rupees, 0, 999, 1);
+    add_slider("rupees", "Rupees", "Sets carried rupees.", Rupees, 0, 500, 1);
     add_slider("bank", "Bank Rupees", "Sets banked rupees.", BankRupees, 0, 5000, 1);
     add_slider("hearts", "Heart Containers", "Sets maximum heart containers.", Hearts, 3, 20, 1);
     add_slider("heart_pieces", "Heart Pieces", "Sets the current heart piece count.", HeartPieces, 0, 3, 1);
@@ -1020,6 +1047,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
     add_bool("letter_mama", "Letter to Mama", "Controls whether Letter to Mama is in inventory.", LetterMama);
     add_bool("letter_kafei", "Letter to Kafei", "Controls whether Letter to Kafei is in inventory.", LetterKafei);
     add_bool("pendant", "Pendant of Memories", "Controls whether the Pendant of Memories is in inventory.", PendantOfMemories);
+    add_tingle_maps();
 
     SAVE_EDITOR_UI_LOG("SaveEditor UI section Masks");
     config_sub_menu->add_section_header("Masks");

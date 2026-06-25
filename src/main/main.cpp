@@ -565,6 +565,7 @@ extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ct
 extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_clock_texture_pack_loaded(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_should_use_3ds_clock_overlay(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_set_pause_save_prompt_overlay_state(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_save_editor_set_snapshot_value(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_save_editor_get_pending_value(uint8_t* rdram, recomp_context* ctx);
@@ -931,6 +932,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
     REGISTER_FUNC(recomp_get_target_framerate);
     REGISTER_FUNC(recomp_get_autosave_enabled);
+    REGISTER_FUNC(recomp_get_save_anywhere_enabled);
     REGISTER_FUNC(recomp_save_editor_set_snapshot_value);
     REGISTER_FUNC(recomp_save_editor_get_pending_value);
     REGISTER_FUNC(recomp_save_editor_should_apply_pending);
@@ -950,6 +952,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_clock_texture_pack_loaded);
     REGISTER_FUNC(recomp_should_use_3ds_clock_overlay);
     REGISTER_FUNC(recomp_set_3ds_clock_state);
+    REGISTER_FUNC(recomp_set_pause_save_prompt_overlay_state);
     REGISTER_FUNC(recomp_android_should_disable_rumble);
     REGISTER_FUNC(recomp_android_should_use_sync_boot_dma);
     REGISTER_FUNC(recomp_android_reset_effect_ss_table);

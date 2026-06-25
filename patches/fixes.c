@@ -4,6 +4,8 @@
 #include "overlays/actors/ovl_Demo_Effect/z_demo_effect.h"
 #include "overlays/gamestates/ovl_daytelop/z_daytelop.h"
 #include "z64shrink_window.h"
+#include "misc_funcs.h"
+#include "input.h"
 
 #define PAGE_BG_WIDTH (PAGE_BG_COLS * PAGE_BG_QUAD_WIDTH)
 #define PAGE_BG_HEIGHT (PAGE_BG_ROWS * PAGE_BG_QUAD_HEIGHT)
@@ -121,7 +123,7 @@ RECOMP_PATCH s16 KaleidoScope_SetPageVertices(PlayState* play, Vtx* vtx, s16 vtx
 // There's one extra row and column of padding on each side, so the size is +2 in each dimension.
 typedef u8 bg_image_t[(2 + PAGE_BG_WIDTH) * (2 + PAGE_BG_HEIGHT)];
 
-#define BG_IMAGE_COUNT 4
+#define BG_IMAGE_COUNT 5
 TexturePtr* bg_pointers[BG_IMAGE_COUNT];
 bg_image_t bg_images[BG_IMAGE_COUNT] __attribute__((aligned(8)));
 
@@ -165,23 +167,196 @@ extern TexturePtr sMaskPageBgTextures[];
 extern TexturePtr sItemPageBgTextures[];
 extern TexturePtr sMapPageBgTextures[];
 extern TexturePtr sQuestPageBgTextures[];
+extern u64 gPauseSave00Tex[];
+extern u64 gPauseSave01Tex[];
+extern u64 gPauseSave02Tex[];
+extern u64 gPauseSave03Tex[];
+extern u64 gPauseSave04Tex[];
+extern u64 gPauseSave10JPNTex[];
+extern u64 gPauseSave11Tex[];
+extern u64 gPauseSave12Tex[];
+extern u64 gPauseSave13Tex[];
+extern u64 gPauseSave14Tex[];
+extern u64 gPauseSave20Tex[];
+extern u64 gPauseSave21Tex[];
+extern u64 gPauseSave22Tex[];
+extern u64 gPauseSave23Tex[];
+extern u64 gPauseSave24Tex[];
+
+TexturePtr sRecompSavePromptBgTextures[] = {
+    gPauseSave00Tex,    gPauseSave01Tex, gPauseSave02Tex, gPauseSave03Tex, gPauseSave04Tex,
+    gPauseSave10JPNTex, gPauseSave11Tex, gPauseSave12Tex, gPauseSave13Tex, gPauseSave14Tex,
+    gPauseSave20Tex,    gPauseSave21Tex, gPauseSave22Tex, gPauseSave23Tex, gPauseSave24Tex,
+};
 
 extern void (*sKaleidoScopeUpdateFunc)(PlayState* play);
 extern void (*sKaleidoScopeDrawFunc)(PlayState* play);
+extern f32 sPauseMenuVerticalOffset;
 
 extern void KaleidoScope_Update(PlayState* play);
 extern void KaleidoScope_Draw(PlayState* play);
+extern void func_8011552C(PlayState* play, u16 action);
+
+static bool pause_save_can_open(PlayState* play) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    if (!recomp_get_save_anywhere_enabled() || pauseCtx->state != PAUSE_STATE_MAIN || pauseCtx->itemDescriptionOn) {
+        return false;
+    }
+
+    if (!gSaveContext.flashSaveAvailable || gSaveContext.fileNum == 255) {
+        return false;
+    }
+
+    switch (pauseCtx->mainState) {
+        case PAUSE_MAIN_STATE_IDLE:
+        case PAUSE_MAIN_STATE_SONG_PROMPT:
+        case PAUSE_MAIN_STATE_IDLE_CURSOR_ON_SONG:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool pause_save_can_open_from_state(PlayState* play, s32 state, s32 main_state, s32 item_description_on) {
+    if (!recomp_get_save_anywhere_enabled() || state != PAUSE_STATE_MAIN || item_description_on) {
+        return false;
+    }
+
+    if (!gSaveContext.flashSaveAvailable || gSaveContext.fileNum == 255) {
+        return false;
+    }
+
+    switch (main_state) {
+        case PAUSE_MAIN_STATE_IDLE:
+        case PAUSE_MAIN_STATE_SONG_PROMPT:
+        case PAUSE_MAIN_STATE_IDLE_CURSOR_ON_SONG:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static void pause_save_open_prompt(PlayState* play, Input* input) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    recomp_printf("[PauseSaveDiag] open before state=%d main=%d save=%d roll=%f press=%04X\n", pauseCtx->state,
+                  pauseCtx->mainState, pauseCtx->savePromptState, pauseCtx->roll, input->press.button);
+    input->press.button &= (u16)~BTN_B;
+    func_8011552C(play, DO_ACTION_NONE);
+    pauseCtx->savePromptState = PAUSE_SAVEPROMPT_STATE_APPEARING;
+    pauseCtx->state = PAUSE_STATE_SAVEPROMPT;
+    pauseCtx->mainState = PAUSE_MAIN_STATE_IDLE;
+    pauseCtx->promptChoice = PAUSE_PROMPT_YES;
+    Audio_PlaySfx_MessageDecide();
+    recomp_printf("[PauseSaveDiag] open after state=%d main=%d save=%d roll=%f press=%04X\n", pauseCtx->state,
+                  pauseCtx->mainState, pauseCtx->savePromptState, pauseCtx->roll, input->press.button);
+}
+
+static void pause_save_recover_from_vanilla_close(PlayState* play, bool pressed_b, s32 prev_state, s32 prev_main_state,
+                                                  s32 prev_item_description_on) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    if (!pressed_b || pauseCtx->state != PAUSE_STATE_UNPAUSE_SETUP ||
+        !pause_save_can_open_from_state(play, prev_state, prev_main_state, prev_item_description_on)) {
+        return;
+    }
+
+    sPauseMenuVerticalOffset = 0.0f;
+    pauseCtx->savePromptState = PAUSE_SAVEPROMPT_STATE_APPEARING;
+    pauseCtx->state = PAUSE_STATE_SAVEPROMPT;
+    pauseCtx->mainState = PAUSE_MAIN_STATE_IDLE;
+    pauseCtx->promptChoice = PAUSE_PROMPT_YES;
+    Audio_PlaySfx_MessageDecide();
+}
+
+static void pause_save_log_state(PlayState* play, Input* input, const char* source) {
+    static s32 log_count = 0;
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    if ((log_count < 40) && (pauseCtx->state == PAUSE_STATE_MAIN)) {
+        recomp_printf("[PauseSaveDiag] %s enabled=%d state=%d main=%d itemDesc=%d press=%04X cur=%04X file=%d flash=%d\n",
+                      source, recomp_get_save_anywhere_enabled(), pauseCtx->state, pauseCtx->mainState,
+                      pauseCtx->itemDescriptionOn, input->press.button, input->cur.button, gSaveContext.fileNum,
+                      gSaveContext.flashSaveAvailable);
+        log_count++;
+    }
+}
+
+static void pause_save_hide_host_clock(PlayState* play) {
+    if (recomp_should_use_3ds_clock_overlay()) {
+        recomp_set_3ds_clock_state(false, 0, gSaveContext.save.day, 0, 0, gSaveContext.save.timeSpeedOffset, false);
+    }
+}
+
+static void pause_save_update_choice(PlayState* play, Input* input) {
+    static bool sStickHeld = false;
+    PauseContext* pauseCtx = &play->pauseCtx;
+    const bool promptReady = (pauseCtx->state == PAUSE_STATE_SAVEPROMPT) &&
+                             (pauseCtx->savePromptState == PAUSE_SAVEPROMPT_STATE_1);
+    bool moveRight;
+    bool moveLeft;
+
+    if (!promptReady) {
+        sStickHeld = false;
+        return;
+    }
+
+    if (ABS_ALT(input->rel.stick_x) < 30) {
+        sStickHeld = false;
+    }
+
+    moveRight = CHECK_BTN_ALL(input->press.button, BTN_DRIGHT) || ((input->rel.stick_x >= 30) && !sStickHeld);
+    moveLeft = CHECK_BTN_ALL(input->press.button, BTN_DLEFT) || ((input->rel.stick_x <= -30) && !sStickHeld);
+
+    if (moveRight) {
+        sStickHeld = true;
+        if (pauseCtx->promptChoice == PAUSE_PROMPT_YES) {
+            pauseCtx->promptChoice = PAUSE_PROMPT_NO;
+            Audio_PlaySfx(NA_SE_SY_CURSOR);
+        }
+    } else if (moveLeft) {
+        sStickHeld = true;
+        if (pauseCtx->promptChoice != PAUSE_PROMPT_YES) {
+            pauseCtx->promptChoice = PAUSE_PROMPT_YES;
+            Audio_PlaySfx(NA_SE_SY_CURSOR);
+        }
+    }
+}
 
 void KaleidoUpdateWrapper(PlayState* play) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    Input* input = CONTROLLER1(&play->state);
+    bool pressed_b = CHECK_BTN_ALL(input->press.button, BTN_B);
+    s32 prev_state = pauseCtx->state;
+    s32 prev_main_state = pauseCtx->mainState;
+    s32 prev_item_description_on = pauseCtx->itemDescriptionOn;
+
+    pause_save_log_state(play, input, "wrapper");
+
+    if (pressed_b && pause_save_can_open(play)) {
+        pause_save_open_prompt(play, input);
+        return;
+    }
+
+    pause_save_update_choice(play, input);
     KaleidoScope_Update(play);
+    if (pressed_b || (pauseCtx->state == PAUSE_STATE_SAVEPROMPT)) {
+        recomp_printf("[PauseSaveDiag] wrapper after update state=%d main=%d save=%d roll=%f\n", pauseCtx->state,
+                      pauseCtx->mainState, pauseCtx->savePromptState, pauseCtx->roll);
+    }
+    pause_save_recover_from_vanilla_close(play, pressed_b, prev_state, prev_main_state, prev_item_description_on);
 }
 
 void KaleidoDrawWrapper(PlayState* play) {
+    pause_save_hide_host_clock(play);
+
     // @recomp Update the background image pointers to reflect the overlay's load address.
     bg_pointers[0] = sMaskPageBgTextures;
     bg_pointers[1] = sItemPageBgTextures;
     bg_pointers[2] = sMapPageBgTextures;
     bg_pointers[3] = sQuestPageBgTextures;
+    bg_pointers[4] = sRecompSavePromptBgTextures;
 
     KaleidoScope_Draw(play);
 
@@ -199,6 +374,7 @@ void KaleidoDrawWrapper(PlayState* play) {
         assemble_image(sItemPageBgTextures, &bg_images[1]);
         assemble_image(sMapPageBgTextures, &bg_images[2]);
         assemble_image(sQuestPageBgTextures, &bg_images[3]);
+        assemble_image(sRecompSavePromptBgTextures, &bg_images[4]);
         gSegments[0x08] = old_segment_08;
         gSegments[0x0D] = old_segment_0D;
     }
@@ -209,6 +385,68 @@ RECOMP_PATCH void KaleidoScopeCall_Init(PlayState* play) {
     sKaleidoScopeUpdateFunc = KaleidoUpdateWrapper;
     sKaleidoScopeDrawFunc = KaleidoDrawWrapper;
     KaleidoSetup_Init(play);
+}
+
+RECOMP_PATCH void KaleidoScopeCall_Update(PlayState* play) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    KaleidoMgrOverlay* kaleidoScopeOvl = &gKaleidoMgrOverlayTable[KALEIDO_OVL_KALEIDO_SCOPE];
+
+    if ((play->pauseCtx.state != PAUSE_STATE_OFF) || (play->pauseCtx.debugEditor != DEBUG_EDITOR_NONE)) {
+        if ((pauseCtx->state == PAUSE_STATE_OPENING_0) || (pauseCtx->state == PAUSE_STATE_OWL_WARP_0)) {
+            if (ShrinkWindow_Letterbox_GetSize() == 0) {
+                R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_SETUP;
+                pauseCtx->mainState = PAUSE_MAIN_STATE_IDLE;
+                pauseCtx->savePromptState = PAUSE_SAVEPROMPT_STATE_APPEARING;
+                pauseCtx->state = (pauseCtx->state & 0xFFFF) + 1;
+            }
+        } else if (pauseCtx->state == PAUSE_STATE_GAMEOVER_0) {
+            R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_SETUP;
+            pauseCtx->mainState = PAUSE_MAIN_STATE_IDLE;
+            pauseCtx->savePromptState = PAUSE_SAVEPROMPT_STATE_APPEARING;
+            pauseCtx->state = (pauseCtx->state & 0xFFFF) + 1;
+        } else if ((pauseCtx->state == PAUSE_STATE_OPENING_1) || (pauseCtx->state == PAUSE_STATE_GAMEOVER_1) ||
+                   (pauseCtx->state == PAUSE_STATE_OWL_WARP_1)) {
+            if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_READY) {
+                pauseCtx->state++;
+            }
+        } else if (pauseCtx->state != PAUSE_STATE_OFF) {
+            if (gKaleidoMgrCurOvl != kaleidoScopeOvl) {
+                if (gKaleidoMgrCurOvl != NULL) {
+                    KaleidoManager_ClearOvl(gKaleidoMgrCurOvl);
+                }
+
+                KaleidoManager_LoadOvl(kaleidoScopeOvl);
+            }
+
+            if (gKaleidoMgrCurOvl == kaleidoScopeOvl) {
+                Input* input = CONTROLLER1(&play->state);
+                bool pressed_b = CHECK_BTN_ALL(input->press.button, BTN_B);
+                s32 prev_state = pauseCtx->state;
+                s32 prev_main_state = pauseCtx->mainState;
+                s32 prev_item_description_on = pauseCtx->itemDescriptionOn;
+
+                pause_save_log_state(play, input, "call");
+
+                if (pressed_b && pause_save_can_open(play)) {
+                    pause_save_open_prompt(play, input);
+                    return;
+                }
+
+                sKaleidoScopeUpdateFunc(play);
+                if (pressed_b || (pauseCtx->state == PAUSE_STATE_SAVEPROMPT)) {
+                    recomp_printf("[PauseSaveDiag] call after update state=%d main=%d save=%d roll=%f\n",
+                                  pauseCtx->state, pauseCtx->mainState, pauseCtx->savePromptState, pauseCtx->roll);
+                }
+                pause_save_recover_from_vanilla_close(play, pressed_b, prev_state, prev_main_state,
+                                                      prev_item_description_on);
+
+                if ((play->pauseCtx.state == PAUSE_STATE_OFF) && (play->pauseCtx.debugEditor == DEBUG_EDITOR_NONE)) {
+                    KaleidoManager_ClearOvl(kaleidoScopeOvl);
+                    KaleidoScopeCall_LoadPlayer();
+                }
+            }
+        }
+    }
 }
 
 // @recomp patched to fix bilerp seams.
@@ -228,7 +466,6 @@ RECOMP_PATCH Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, Texture
     }
 
     if (cur_image == NULL) {
-        // No image was found.
         return gfx;
     }
 

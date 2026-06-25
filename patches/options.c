@@ -4,6 +4,11 @@
 #include "overlays/gamestates/ovl_file_choose/z_file_select.h"
 
 #define FS_BTN_CONFIRM_REWIND 2
+#define SAVE_TYPE_OWL 1
+
+static s32 FileSelect_IsVisibleOwlSave(FileSelectState* this, s32 fileIndex) {
+    return this->isOwlSave[fileIndex + 2] == SAVE_TYPE_OWL;
+}
 
 INCBIN(rewind_button_texture, "rewind.ia16.bin");
 
@@ -303,7 +308,7 @@ RECOMP_PATCH void FileSelect_SetWindowContentVtx(GameState *thisx) {
         // Account for owl-save offset
 
         spAC = j;
-        if (this->isOwlSave[j + 2]) {
+        if (FileSelect_IsVisibleOwlSave(this, j)) {
             spAC = j + 2;
         }
 
@@ -687,7 +692,7 @@ RECOMP_PATCH void FileSelect_SetWindowContentVtx(GameState *thisx) {
     posY = -0xC;
 
     // @recomp Check if the rewind button is visible based on whether there's an owl save for the current slot and what mode the file select is currently in.
-    bool rewind_visible = this->menuMode == FS_MENU_MODE_SELECT && this->isOwlSave[this->buttonIndex + 2] && (this->selectMode == SM_FADE_IN_FILE_INFO || this->selectMode == SM_CONFIRM_FILE || this->selectMode == SM_FADE_OUT_FILE_INFO || this->selectMode == SM_FADE_OUT);
+    bool rewind_visible = this->menuMode == FS_MENU_MODE_SELECT && FileSelect_IsVisibleOwlSave(this, this->buttonIndex) && (this->selectMode == SM_FADE_IN_FILE_INFO || this->selectMode == SM_CONFIRM_FILE || this->selectMode == SM_FADE_OUT_FILE_INFO || this->selectMode == SM_FADE_OUT);
     for (j = 0; j < 2; j++, vtxId += 4, posY -= 0x10) {
 
         this->windowContentVtx[vtxId + 0].v.ob[0] = this->windowContentVtx[vtxId + 2].v.ob[0] = posX;
@@ -835,7 +840,7 @@ RECOMP_PATCH void FileSelect_DrawWindowContents(GameState *thisx) {
 
             for (quadVtxIndex = 0, i = 0; i < 7; i++, quadVtxIndex += 4) {
                 // @recomp Don't draw the box on the right that displays owl save information if the Rewind button is selected.
-                if ((i < 5) || (this->isOwlSave[fileIndex + 2] && (i >= 5) && !hide_owl_save)) {
+                if ((i < 5) || (FileSelect_IsVisibleOwlSave(this, fileIndex) && (i >= 5) && !hide_owl_save)) {
                     gDPLoadTextureBlock(POLY_OPA_DISP++, sFileInfoBoxTextures[i], G_IM_FMT_IA, G_IM_SIZ_16b,
                         sFileInfoBoxPartWidths[i], 56, 0, G_TX_NOMIRROR | G_TX_WRAP,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
@@ -876,7 +881,7 @@ RECOMP_PATCH void FileSelect_DrawWindowContents(GameState *thisx) {
             gSP1Quadrangle(POLY_OPA_DISP++, 8, 10, 11, 9, 0);
 
             // @recomp Skip drawing the box to hold the owl save icon if the Rewind button is currently selected.
-            if (this->isOwlSave[i + 2] && !hide_owl_save) {
+            if (FileSelect_IsVisibleOwlSave(this, i) && !hide_owl_save) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, sWindowContentColors[0], sWindowContentColors[1],
                     sWindowContentColors[2], this->nameBoxAlpha[i]);
                 gDPLoadTextureBlock(POLY_OPA_DISP++, gFileSelBlankButtonTex, G_IM_FMT_IA, G_IM_SIZ_16b, 52, 16, 0,
@@ -892,7 +897,7 @@ RECOMP_PATCH void FileSelect_DrawWindowContents(GameState *thisx) {
         // @recomp Record the save's owl save status and clear it if the rewind button is currently selected.
         u8 *this_owl_save = &this->isOwlSave[fileIndex + 2];
         u8 owl_save_old = *this_owl_save;
-        if (hide_owl_save) {
+        if (hide_owl_save || (*this_owl_save != SAVE_TYPE_OWL)) {
             *this_owl_save = false;
         }
 
@@ -934,7 +939,7 @@ RECOMP_PATCH void FileSelect_DrawWindowContents(GameState *thisx) {
     }
 
     // @recomp Draw the Rewind button.
-    if (this->menuMode == FS_MENU_MODE_SELECT && this->isOwlSave[this->buttonIndex + 2]) {
+    if (this->menuMode == FS_MENU_MODE_SELECT && FileSelect_IsVisibleOwlSave(this, this->buttonIndex)) {
         gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, this->windowColor[0], this->windowColor[1], this->windowColor[2],
             this->confirmButtonAlpha[FS_BTN_CONFIRM_YES]);
         gDPLoadTextureBlock(POLY_OPA_DISP++, rewind_button_texture, G_IM_FMT_IA, G_IM_SIZ_16b, 64, 16, 0,
@@ -1016,7 +1021,7 @@ RECOMP_PATCH void FileSelect_ConfirmFile(GameState *thisx) {
         Audio_PlaySfx(NA_SE_SY_FSEL_CURSOR);
 
         // @recomp Allow the cursor to navigate to the rewind button if this save slot has an owl save.
-        if (this->isOwlSave[this->buttonIndex + 2]) {
+        if (FileSelect_IsVisibleOwlSave(this, this->buttonIndex)) {
             if (this->stickAdjY > 0) {
                 this->confirmButtonIndex--;
                 if (this->confirmButtonIndex < 0) {

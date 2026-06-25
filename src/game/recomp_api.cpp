@@ -112,6 +112,10 @@ extern "C" void recomp_get_autosave_enabled(uint8_t* rdram, recomp_context* ctx)
     _return(ctx, static_cast<s32>(zelda64::get_autosave_mode() == zelda64::AutosaveMode::On));
 }
 
+extern "C" void recomp_get_save_anywhere_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return(ctx, static_cast<s32>(zelda64::get_save_anywhere_enabled()));
+}
+
 extern "C" void recomp_save_editor_set_snapshot_value(uint8_t* rdram, recomp_context* ctx) {
     auto id = static_cast<zelda64::save_editor::ValueId>(_arg<0, s32>(rdram, ctx));
     zelda64::save_editor::set_snapshot_value(id, _arg<1, s32>(rdram, ctx));
@@ -396,6 +400,15 @@ extern "C" void recomp_set_3ds_clock_state(uint8_t* rdram, recomp_context* ctx) 
         .time_until_crash_seconds = _arg<4, s32>(rdram, ctx),
         .time_speed_offset = _arg<5, s32>(rdram, ctx),
         .final_hours = _arg<6, s32>(rdram, ctx) != 0,
+    });
+}
+
+extern "C" void recomp_set_pause_save_prompt_overlay_state(uint8_t* rdram, recomp_context* ctx) {
+    zelda64::set_pause_save_prompt_overlay_state({
+        .visible = _arg<0, s32>(rdram, ctx) != 0,
+        .alpha = _arg<1, s32>(rdram, ctx),
+        .prompt_choice = _arg<2, s32>(rdram, ctx),
+        .save_prompt_state = _arg<3, s32>(rdram, ctx),
     });
 }
 

@@ -8,7 +8,8 @@
 #include "misc_funcs.h"
 #include "input.h"
 
-#define SAVE_TYPE_AUTOSAVE 2 
+#define SAVE_TYPE_AUTOSAVE 2
+#define SAVE_ANYWHERE_RESUME_FLAG 0x80000000
 
 u8 gCanPause;
 s32 ShrinkWindow_Letterbox_GetSizeTarget(void);
@@ -74,6 +75,28 @@ void recomp_reset_autosave_timer_slow();
 RECOMP_DECLARE_EVENT(recomp_on_autosave(PlayState* play));
 RECOMP_DECLARE_EVENT(recomp_after_autosave(PlayState* play));
 
+static void preserve_magic_for_save(void) {
+    if (!gSaveContext.save.saveInfo.playerData.isMagicAcquired) {
+        return;
+    }
+
+    s32 max_magic = gSaveContext.save.saveInfo.playerData.isDoubleMagicAcquired ? MAGIC_DOUBLE_METER : MAGIC_NORMAL_METER;
+    s32 magic = gSaveContext.save.saveInfo.playerData.magic;
+
+    if (((gSaveContext.magicState == MAGIC_STATE_STEP_CAPACITY) || (gSaveContext.magicState == MAGIC_STATE_FILL)) &&
+        (gSaveContext.magicFillTarget > magic)) {
+        magic = gSaveContext.magicFillTarget;
+    }
+
+    if (magic < 0) {
+        magic = 0;
+    } else if (magic > max_magic) {
+        magic = max_magic;
+    }
+
+    gSaveContext.save.saveInfo.playerData.magic = magic;
+}
+
 RECOMP_EXPORT void recomp_do_autosave(PlayState* play) {
 
     // @recomp_event recomp_on_autosave(PlayState* play): Autosave triggered.
@@ -92,6 +115,7 @@ RECOMP_EXPORT void recomp_do_autosave(PlayState* play) {
     s32 fileNum = gSaveContext.fileNum;
 
     gSaveContext.save.isOwlSave = SAVE_TYPE_AUTOSAVE;
+    preserve_magic_for_save();
 
     gSaveContext.save.saveInfo.checksum = 0;
     gSaveContext.save.saveInfo.checksum = Sram_CalcChecksum(&gSaveContext, offsetof(SaveContext, fileNum));
@@ -187,11 +211,15 @@ RECOMP_PATCH void func_8014546C(SramContext* sramCtx) {
             gSaveContext.save.saveInfo.permanentSceneFlags[i].collectible = gSaveContext.cycleSceneFlags[i].collectible;
         }
 
+        preserve_magic_for_save();
         gSaveContext.save.saveInfo.checksum = 0;
         gSaveContext.save.saveInfo.checksum = Sram_CalcChecksum(&gSaveContext, offsetof(SaveContext, fileNum));
 
         Lib_MemCpy(sramCtx->saveBuf, &gSaveContext, offsetof(SaveContext, fileNum));
     } else {
+        s32 write_resume_save = recomp_get_save_anywhere_enabled();
+        u16 normal_checksum;
+
         // @recomp Delete the owl save.
         delete_owl_save(sramCtx, gSaveContext.fileNum);
         // @recomp Reset the autosave timer.
@@ -204,12 +232,39 @@ RECOMP_PATCH void func_8014546C(SramContext* sramCtx) {
             gSaveContext.save.saveInfo.permanentSceneFlags[i].collectible = gSaveContext.cycleSceneFlags[i].collectible;
         }
 
+        if (write_resume_save) {
+            gSaveContext.save.saveInfo.unk_EA4 |= SAVE_ANYWHERE_RESUME_FLAG;
+        } else {
+            gSaveContext.save.saveInfo.unk_EA4 &= ~SAVE_ANYWHERE_RESUME_FLAG;
+        }
+        preserve_magic_for_save();
         gSaveContext.save.saveInfo.checksum = 0;
         gSaveContext.save.saveInfo.checksum = Sram_CalcChecksum(&gSaveContext.save, sizeof(Save));
+        normal_checksum = gSaveContext.save.saveInfo.checksum;
 
         if (gSaveContext.flashSaveAvailable) {
             Lib_MemCpy(sramCtx->saveBuf, &gSaveContext, sizeof(Save));
             Lib_MemCpy(&sramCtx->saveBuf[0x2000], &gSaveContext.save, sizeof(Save));
+
+            if (write_resume_save) {
+                s32 fileNum = gSaveContext.fileNum;
+                u8 oldIsOwlSave = gSaveContext.save.isOwlSave;
+
+                gSaveContext.save.isOwlSave = SAVE_TYPE_AUTOSAVE;
+                preserve_magic_for_save();
+                gSaveContext.save.saveInfo.checksum = 0;
+                gSaveContext.save.saveInfo.checksum = Sram_CalcChecksum(&gSaveContext, offsetof(SaveContext, fileNum));
+
+                Lib_MemCpy(sramCtx->saveBuf, &gSaveContext, offsetof(SaveContext, fileNum));
+                Sram_SyncWriteToFlash(sramCtx, gFlashOwlSaveStartPages[fileNum * 2], gFlashOwlSaveNumPages[fileNum * 2]);
+                Sram_SyncWriteToFlash(sramCtx, gFlashOwlSaveStartPages[fileNum * 2 + 1],
+                                      gFlashOwlSaveNumPages[fileNum * 2 + 1]);
+
+                gSaveContext.save.isOwlSave = oldIsOwlSave;
+                gSaveContext.save.saveInfo.checksum = normal_checksum;
+                Lib_MemCpy(sramCtx->saveBuf, &gSaveContext, sizeof(Save));
+                Lib_MemCpy(&sramCtx->saveBuf[0x2000], &gSaveContext.save, sizeof(Save));
+            }
         }
     }
 }
@@ -252,6 +307,7 @@ int bcmp_recomp(void* __s1, void* __s2, int __n);
 
 bool autosave_compare_saves(SaveContext* a, SaveContext* b) {
     SAVE_COMPARE_MEMBER_ARRAY(a, b, save.saveInfo.playerData.healthCapacity);
+    SAVE_COMPARE_MEMBER_ARRAY(a, b, save.saveInfo.playerData.magic);
     SAVE_COMPARE_MEMBER_ARRAY(a, b, save.saveInfo.playerData.isMagicAcquired);
     SAVE_COMPARE_MEMBER_ARRAY(a, b, save.saveInfo.playerData.isDoubleMagicAcquired);
     SAVE_COMPARE_MEMBER_ARRAY(a, b, save.saveInfo.playerData.doubleDefense);
@@ -553,6 +609,23 @@ static s32 autosave_scene_id_is_valid(s32 scene_id) {
     return (scene_id >= 0) && (scene_id < SCENE_MAX);
 }
 
+static void save_anywhere_prepare_resume_load(void) {
+    gSaveContext.save.entrance = spawn_entrance_from_autosave_entrance(gSaveContext.save.entrance);
+    gSaveContext.save.cutsceneIndex = 0;
+    gSaveContext.nextCutsceneIndex = 0xFFEF;
+    gSaveContext.respawnFlag = 0;
+    gSaveContext.respawn[RESPAWN_MODE_DOWN].entrance = ENTR_LOAD_OPENING;
+    gSaveContext.showTitleCard = true;
+    gSaveContext.seqId = (u8)NA_BGM_DISABLED;
+    gSaveContext.ambienceId = AMBIENCE_ID_DISABLED;
+    gSaveContext.nextTransitionType = TRANS_NEXT_TYPE_DEFAULT;
+    gSaveContext.cutsceneTrigger = 0;
+    gSaveContext.chamberCutsceneNum = 0;
+    gSaveContext.nextDayTime = NEXT_TIME_NONE;
+    CLEAR_EVENTINF(EVENTINF_TRIGGER_DAYTELOP);
+    gSaveContext.save.saveInfo.unk_EA4 &= ~SAVE_ANYWHERE_RESUME_FLAG;
+}
+
 static void autosave_sanitize_samsung_load(void) {
     s32 scene_id;
 
@@ -625,7 +698,6 @@ RECOMP_PATCH void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCt
     }
 
     autosave_sanitize_samsung_load();
-
     gSaveContext.save.saveInfo.playerData.magicLevel = 0;
 
     if (!gSaveContext.save.isOwlSave) {
@@ -654,6 +726,19 @@ RECOMP_PATCH void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCt
             gSaveContext.save.entrance = ENTRANCE(SOUTH_CLOCK_TOWN, 0);
             gSaveContext.save.day = 0;
             gSaveContext.save.time = CLOCK_TIME(6, 0) - 1;
+        } else if (gSaveContext.save.saveInfo.unk_EA4 & SAVE_ANYWHERE_RESUME_FLAG) {
+            save_anywhere_prepare_resume_load();
+
+            if (gSaveContext.save.entrance == ENTRANCE(GREAT_BAY_TEMPLE, 0)) {
+                skip_entry_cutscene = true;
+            }
+
+            if (gSaveContext.save.saveInfo.scarecrowSpawnSongSet) {
+                Lib_MemCpy(gScarecrowSpawnSongPtr, gSaveContext.save.saveInfo.scarecrowSpawnSong,
+                           sizeof(gSaveContext.save.saveInfo.scarecrowSpawnSong));
+
+                for (i = 0; i != ARRAY_COUNT(gSaveContext.save.saveInfo.scarecrowSpawnSong); i++) {}
+            }
         } else {
             gSaveContext.save.entrance = ENTRANCE(CUTSCENE, 0);
             gSaveContext.nextCutsceneIndex = 0;

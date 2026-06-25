@@ -248,6 +248,7 @@ struct ControlOptionsContext {
     zelda64::TargetingMode targeting_mode;
     recomp::BackgroundInputMode background_input_mode;
     zelda64::AutosaveMode autosave_mode;
+    zelda64::SaveAnywhereMode save_anywhere_mode;
     zelda64::CameraInvertMode camera_invert_mode;
     zelda64::AnalogCamMode analog_cam_mode;
     int analog_camera_distance; // 100 to 900, free camera distance in world units
@@ -345,6 +346,21 @@ void zelda64::set_autosave_mode(zelda64::AutosaveMode mode) {
     if (general_model_handle) {
         general_model_handle.DirtyVariable("autosave_mode");
     }
+}
+
+zelda64::SaveAnywhereMode zelda64::get_save_anywhere_mode() {
+    return control_options_context.save_anywhere_mode;
+}
+
+void zelda64::set_save_anywhere_mode(zelda64::SaveAnywhereMode mode) {
+    control_options_context.save_anywhere_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("save_anywhere_mode");
+    }
+}
+
+bool zelda64::get_save_anywhere_enabled() {
+    return get_save_anywhere_mode() == SaveAnywhereMode::On;
 }
 
 zelda64::CameraInvertMode zelda64::get_camera_invert_mode() {
@@ -1128,6 +1144,7 @@ public:
         bind_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
         bind_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
         bind_option(constructor, "autosave_mode", &control_options_context.autosave_mode);
+        bind_option(constructor, "save_anywhere_mode", &control_options_context.save_anywhere_mode);
         bind_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
@@ -1172,6 +1189,16 @@ public:
                         : zelda64::AutosaveMode::On
                 );
                 model_handle.DirtyVariable("autosave_mode");
+            });
+
+        constructor.BindEventCallback("toggle_save_anywhere_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_save_anywhere_mode(
+                    zelda64::get_save_anywhere_mode() == zelda64::SaveAnywhereMode::On
+                        ? zelda64::SaveAnywhereMode::Off
+                        : zelda64::SaveAnywhereMode::On
+                );
+                model_handle.DirtyVariable("save_anywhere_mode");
             });
 
         constructor.BindEventCallback("toggle_analog_cam_mode",

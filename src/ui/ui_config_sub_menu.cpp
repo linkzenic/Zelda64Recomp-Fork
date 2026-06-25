@@ -202,6 +202,85 @@ void ConfigOptionRadio::set_option_enabled(bool enabled) {
     }
 }
 
+// ConfigOptionMultiToggle
+
+void ConfigOptionMultiToggle::sync_option(uint32_t index) {
+    if (index < options.size() && index < values.size()) {
+        options[index]->set_selected_state(values[index]);
+    }
+}
+
+void ConfigOptionMultiToggle::option_pressed(uint32_t index) {
+    if (index >= values.size()) {
+        return;
+    }
+
+    values[index] = !values[index];
+    sync_option(index);
+    callback(option_id, index, values[index]);
+}
+
+ConfigOptionMultiToggle::ConfigOptionMultiToggle(
+    Element *parent, const std::vector<std::string> &option_names, const std::vector<bool> &option_values,
+    std::function<void(const std::string &, uint32_t, bool)> callback) : ConfigOptionElement(parent) {
+    this->callback = callback;
+    values = option_values;
+    values.resize(option_names.size(), false);
+
+    row = get_current_context().create_element<Container>(this, FlexDirection::Row, JustifyContent::FlexStart);
+    row->set_gap(14.0f);
+    row->set_align_items(AlignItems::Center);
+
+    for (std::string_view name : option_names) {
+        uint32_t index = static_cast<uint32_t>(options.size());
+        RadioOption *option = get_current_context().create_element<RadioOption>(row, name, index);
+        option->set_pressed_callback([this](uint32_t index) { option_pressed(index); });
+        option->set_focus_callback([this](bool active) {
+            if (focus_callback != nullptr) {
+                focus_callback(option_id, active);
+            }
+        });
+        options.emplace_back(option);
+        sync_option(index);
+
+        if (options.size() > 1) {
+            options[options.size() - 2]->set_nav(NavDirection::Right, options[options.size() - 1]);
+            options[options.size() - 1]->set_nav(NavDirection::Left, options[options.size() - 2]);
+        }
+    }
+}
+
+void ConfigOptionMultiToggle::set_large_touch_style(bool enabled) {
+    ConfigOptionElement::set_large_touch_style(enabled);
+    if (!enabled) {
+        return;
+    }
+
+    set_height(148.0f);
+    row->set_gap(14.0f);
+    row->set_align_items(AlignItems::Center);
+    for (RadioOption* option : options) {
+        option->set_large_touch_style();
+    }
+}
+
+void ConfigOptionMultiToggle::set_vertical_nav(NavDirection dir, Element* element) {
+    for (RadioOption* option : options) {
+        option->set_nav(dir, element);
+    }
+}
+
+void ConfigOptionMultiToggle::set_option_enabled(bool enabled) {
+    ConfigOptionElement::set_option_enabled(enabled);
+    row->set_enabled(enabled);
+    for (size_t index = 0; index < options.size(); index++) {
+        RadioOption* option = options[index];
+        option->set_enabled(enabled);
+        option->set_opacity(enabled ? 1.0f : 0.38f);
+        option->set_color(enabled ? Color{ 242, 242, 242, 255 } : Color{ 160, 160, 160, 145 });
+    }
+}
+
 // ConfigOptionToggle
 
 void ConfigOptionToggle::sync_button_text() {
@@ -407,9 +486,18 @@ ConfigOptionElement *ConfigSubMenu::add_option(ConfigOptionElement *option, std:
     else {
         config_option_elements.back()->set_nav(NavDirection::Down, option->get_focus_element());
         option->set_nav(NavDirection::Up, config_option_elements.back()->get_focus_element());
+        if (auto *previous_multi_toggle = dynamic_cast<ConfigOptionMultiToggle *>(config_option_elements.back())) {
+            previous_multi_toggle->set_vertical_nav(NavDirection::Down, option->get_focus_element());
+        }
     }
 
     config_option_elements.emplace_back(option);
+    if (auto *multi_toggle = dynamic_cast<ConfigOptionMultiToggle *>(option)) {
+        multi_toggle->set_vertical_nav(NavDirection::Up,
+                                       config_option_elements.size() == 1
+                                           ? static_cast<Element *>(back_button_visible ? back_button : option->get_focus_element())
+                                           : config_option_elements[config_option_elements.size() - 2]->get_focus_element());
+    }
     return option;
 }
 
@@ -426,6 +514,11 @@ ConfigOptionElement *ConfigSubMenu::add_text_option(std::string_view id, std::st
 ConfigOptionElement *ConfigSubMenu::add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback) {
     ConfigOptionRadio *option_radio = get_current_context().create_element<ConfigOptionRadio>(config_scroll_container, value, options, callback);
     return add_option(option_radio, id, name, description);
+}
+
+ConfigOptionElement *ConfigSubMenu::add_multi_toggle_option(std::string_view id, std::string_view name, std::string_view description, const std::vector<std::string> &options, const std::vector<bool> &values, std::function<void(const std::string &, uint32_t, bool)> callback) {
+    ConfigOptionMultiToggle *option_multi_toggle = get_current_context().create_element<ConfigOptionMultiToggle>(config_scroll_container, options, values, callback);
+    return add_option(option_multi_toggle, id, name, description);
 }
 
 ConfigOptionElement *ConfigSubMenu::add_toggle_option(std::string_view id, std::string_view name, std::string_view description, bool value, std::function<void(const std::string &, bool)> callback) {

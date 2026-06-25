@@ -32,6 +32,8 @@ DECLARE_FUNC(s32, recomp_should_use_3ds_clock_overlay);
 DECLARE_FUNC(s32, recomp_get_clock_texture_pack_loaded);
 DECLARE_FUNC(void, recomp_set_3ds_clock_state, s32 visible, s32 alpha, s32 day, s32 current_time_seconds,
              s32 time_until_crash_seconds, s32 time_speed_offset, s32 final_hours);
+DECLARE_FUNC(void, recomp_set_pause_save_prompt_overlay_state, s32 visible, s32 alpha, s32 prompt_choice,
+             s32 save_prompt_state);
 DECLARE_FUNC(s32, recomp_android_should_disable_rumble);
 DECLARE_FUNC(s32, recomp_android_should_use_sync_boot_dma);
 

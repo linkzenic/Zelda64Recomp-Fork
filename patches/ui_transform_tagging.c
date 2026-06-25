@@ -1,6 +1,8 @@
 #include "patches.h"
 #include "transform_ids.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
+#include "input.h"
+#include "pause_save_prompt_textures.h"
 
 void KaleidoScope_DrawCursor(PlayState* play);
 void KaleidoScope_DrawGameOver(PlayState* play);
@@ -10,6 +12,7 @@ void KaleidoScope_DrawOwlWarpMapPage(PlayState* play);
 void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx);
 Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, TexturePtr* textures);
 void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx);
+void KaleidoScope_UpdatePrompt(PlayState* play);
 void KaleidoScope_UpdateCursorSize(PlayState* play);
 
 extern s16 sCursorPrimR;
@@ -35,6 +38,8 @@ extern Gfx gZButtonIconDL[];
 extern Gfx gRButtonIconDL[];
 extern Gfx gAButtonIconDL[];
 extern Gfx gCButtonIconsDL[];
+extern Gfx gPromptCursorLeftDL[];
+extern Gfx gPromptCursorRightDL[];
 extern u64 gPauseToDecideENGTex[];
 extern u64 gPauseToEquipENGTex[];
 extern u64 gPauseToViewNotebookENGTex[];
@@ -53,6 +58,90 @@ extern TexturePtr sItemPageBgTextures[];
 extern TexturePtr sMapPageBgTextures[];
 extern TexturePtr sQuestPageBgTextures[];
 extern TexturePtr sMaskPageBgTextures[];
+extern TexturePtr sRecompSavePromptBgTextures[];
+
+static void Recomp_DrawPauseSavePrompt(PlayState* play, GraphicsContext* gfxCtx) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    GraphicsContext* __gfxCtx = gfxCtx;
+
+    if ((pauseCtx->state != PAUSE_STATE_SAVEPROMPT) || (pauseCtx->promptPageVtx == NULL)) {
+        recomp_set_pause_save_prompt_overlay_state(false, 0, 0, 0);
+        return;
+    }
+
+    KaleidoScope_UpdatePrompt(play);
+    recomp_set_pause_save_prompt_overlay_state(true, pauseCtx->alpha, pauseCtx->promptChoice,
+                                               pauseCtx->savePromptState);
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0, PRIMITIVE, 0,
+                      TEXEL0, 0, SHADE, 0);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
+
+    switch (pauseCtx->pageIndex) {
+        case PAUSE_ITEM:
+            pauseCtx->itemPageRoll = pauseCtx->roll + 314.0f;
+            Matrix_RotateYF(0.0f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+            break;
+
+        case PAUSE_MAP:
+            pauseCtx->mapPageRoll = pauseCtx->roll + 314.0f;
+            Matrix_RotateYF(-1.57f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+            break;
+
+        case PAUSE_QUEST:
+            pauseCtx->questPageRoll = pauseCtx->roll + 314.0f;
+            Matrix_RotateYF(-3.14f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+            break;
+
+        case PAUSE_MASK:
+            pauseCtx->maskPageRoll = pauseCtx->roll + 314.0f;
+            Matrix_RotateYF(1.57f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+            break;
+    }
+
+    gSPMatrix(POLY_OPA_DISP++, Matrix_NewMtx(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+    POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->promptPageVtx, sRecompSavePromptBgTextures);
+
+    gSPVertex(POLY_OPA_DISP++, &pauseCtx->promptPageVtx[60], 32, 0);
+    gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_POINT);
+
+    if ((pauseCtx->savePromptState <= PAUSE_SAVEPROMPT_STATE_4) ||
+        (pauseCtx->savePromptState == PAUSE_SAVEPROMPT_STATE_6)) {
+        gDPPipeSync(POLY_OPA_DISP++);
+        gDPSetCombineLERP(POLY_OPA_DISP++, 1, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0, 1, 0, PRIMITIVE, 0, TEXEL0,
+                          0, PRIMITIVE, 0);
+        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 100, 100, 255, pauseCtx->promptAlpha);
+
+        if (pauseCtx->promptChoice == PAUSE_PROMPT_YES) {
+            gSPDisplayList(POLY_OPA_DISP++, gPromptCursorLeftDL);
+        } else {
+            gSPDisplayList(POLY_OPA_DISP++, gPromptCursorRightDL);
+        }
+
+    } else if (pauseCtx->savePromptState >= PAUSE_SAVEPROMPT_STATE_5) {
+    }
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCombineLERP(POLY_OPA_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
+                      PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 0, pauseCtx->alpha);
+    gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, 0);
+    gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+}
 
 // @recomp Patched to set pageIndex to a dummy value when KaleidoScope_SetVertices is called to make it
 // allocate vertices for all pages at all times. This is simpler than patching KaleidoScope_SetVertices directly.
@@ -481,9 +570,6 @@ RECOMP_PATCH void KaleidoScope_DrawInfoPanel(PlayState* play) {
             gDPPipeSync(POLY_OPA_DISP++);
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, 255);
 
-            //! @bug: Incorrect dimensions. Should be 64x16
-            POLY_OPA_DISP = Gfx_DrawTexQuad4b(POLY_OPA_DISP, gPauseToDecideENGTex, G_IM_FMT_IA, 48, 16, 4);
-
         } else if (pauseCtx->cursorSpecialPos != 0) {
             if ((pauseCtx->state == PAUSE_STATE_MAIN) && (pauseCtx->mainState == PAUSE_MAIN_STATE_IDLE)) {
 
@@ -880,6 +966,8 @@ RECOMP_PATCH void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCt
                 KaleidoScope_DrawMaskSelect(play);
                 break;
         }
+
+        Recomp_DrawPauseSavePrompt(play, gfxCtx);
     }
 
     CLOSE_DISPS(gfxCtx);

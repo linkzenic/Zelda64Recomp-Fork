@@ -82,6 +82,27 @@ public:
     void set_option_enabled(bool enabled) override;
 };
 
+class ConfigOptionMultiToggle : public ConfigOptionElement {
+protected:
+    Container *row = nullptr;
+    std::vector<RadioOption *> options;
+    std::vector<bool> values;
+    std::function<void(const std::string &, uint32_t, bool)> callback;
+
+    void option_pressed(uint32_t index);
+    void sync_option(uint32_t index);
+    std::string_view get_type_name() override { return "ConfigOptionMultiToggle"; }
+public:
+    ConfigOptionMultiToggle(Element *parent, const std::vector<std::string> &options, const std::vector<bool> &values,
+                            std::function<void(const std::string &, uint32_t, bool)> callback);
+    Element* get_focus_element() override {
+        return options.empty() ? static_cast<Element*>(row) : static_cast<Element*>(options.front());
+    }
+    void set_vertical_nav(NavDirection dir, Element* element);
+    void set_large_touch_style(bool enabled) override;
+    void set_option_enabled(bool enabled) override;
+};
+
 class ConfigOptionToggle : public ConfigOptionElement {
 protected:
     Button *button = nullptr;
@@ -141,6 +162,7 @@ public:
     ConfigOptionElement *add_slider_option(std::string_view id, std::string_view name, std::string_view description, double value, double min, double max, double step, bool percent, std::function<void(const std::string &, double)> callback);
     ConfigOptionElement *add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
     ConfigOptionElement *add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
+    ConfigOptionElement *add_multi_toggle_option(std::string_view id, std::string_view name, std::string_view description, const std::vector<std::string> &options, const std::vector<bool> &values, std::function<void(const std::string &, uint32_t, bool)> callback);
     ConfigOptionElement *add_toggle_option(std::string_view id, std::string_view name, std::string_view description, bool value, std::function<void(const std::string &, bool)> callback);
     ConfigOptionElement *add_button_option(std::string_view id, std::string_view name, std::string_view description, std::string_view button_text, std::function<void(const std::string &)> callback);
     void add_section_header(std::string_view name);

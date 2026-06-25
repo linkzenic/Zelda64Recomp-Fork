@@ -146,13 +146,16 @@ public:
         constructor.Bind("mm_rom_valid", &mm_rom_valid);
         constructor.Bind("safe_mode_enabled", &safe_mode_enabled);
 
-        version_string = recomp::get_project_version().to_string();
 #if defined(__ANDROID__)
         if (const char* android_version_name = std::getenv("APP_ANDROID_VERSION_NAME");
             android_version_name != nullptr && android_version_name[0] != '\0') {
-            version_string += " Android ";
+            version_string = "Linkzenic Android Fork v";
             version_string += android_version_name;
+        } else {
+            version_string = "Linkzenic Android Fork";
         }
+#else
+        version_string = recomp::get_project_version().to_string();
 #endif
         constructor.Bind("version_number", &version_string);
 

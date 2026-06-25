@@ -79,12 +79,6 @@ namespace recompui {
     void RadioOption::process_event(const Event &e) {
         switch (e.type) {
         case EventType::MouseButton:
-            {
-                const EventMouseButton &mousebutton = std::get<EventMouseButton>(e.variant);
-                if (is_enabled() && mousebutton.button == MouseButton::Left && mousebutton.pressed) {
-                    pressed_callback(index);
-                }
-            }
             break;
         case EventType::Click:
             if (is_enabled()) {

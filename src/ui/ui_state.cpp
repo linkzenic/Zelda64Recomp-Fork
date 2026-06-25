@@ -45,6 +45,7 @@
 #include "ui_mod_menu.h"
 #include "ui_mod_installer.h"
 #include "ui_renderer.h"
+#include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
 bool can_focus(Rml::Element* element) {
     return element->GetOwnerDocument() != nullptr && element->GetProperty(Rml::PropertyId::TabIndex)->Get<Rml::Style::TabIndex>() != Rml::Style::TabIndex::None;
@@ -183,7 +184,9 @@ class UIState {
     std::unique_ptr<recompui::MenuController> config_menu_controller{};
     std::vector<ContextDetails> shown_contexts{};
     recompui::ContextId clock_overlay_context = recompui::ContextId::null();
+    recompui::ContextId pause_save_prompt_overlay_context = recompui::ContextId::null();
     std::string clock_overlay_markup;
+    std::string pause_save_prompt_overlay_markup;
     std::atomic_bool clock_texture_reload_requested = false;
     bool clock_sun_hour_loaded = false;
     bool clock_moon_hour_loaded = false;
@@ -216,6 +219,7 @@ public:
         system_interface = std::make_unique<SystemInterface_SDL>();
         system_interface->SetWindow(window);
         render_interface.init(interface, device);
+        load_launcher_images();
         ZELDA_UI_LOG("render interface initialized");
 
         launcher_menu_controller->register_events(event_listener_instancer);
@@ -283,6 +287,7 @@ public:
         recompui::init_prompt_context();
         ZELDA_UI_LOG("prompt context initialized");
         create_clock_overlay_context();
+        create_pause_save_prompt_overlay_context();
     }
 
     void unload() {
@@ -471,6 +476,40 @@ public:
             {"clock3ds_digit9", "clock_3ds/gThreeDayClock3DSFinalHoursDigit9Tex.ia8.png"},
         };
         return clock_images;
+    }
+
+    void load_launcher_images() {
+        auto asset_path = zelda64::get_asset_path("launcher-mask.png");
+        if (std::filesystem::exists(asset_path)) {
+            const std::vector<char> image_bytes = read_file_to_bytes(asset_path);
+            int width = 0;
+            int height = 0;
+            int channels = 0;
+            stbi_uc* decoded = stbi_load_from_memory(
+                reinterpret_cast<const stbi_uc*>(image_bytes.data()),
+                static_cast<int>(image_bytes.size()),
+                &width,
+                &height,
+                &channels,
+                4);
+
+            if (decoded != nullptr && width > 0 && height > 0) {
+                std::vector<char> rgba(
+                    reinterpret_cast<const char*>(decoded),
+                    reinterpret_cast<const char*>(decoded) + (static_cast<size_t>(width) * static_cast<size_t>(height) * 4));
+                ZELDA_UI_LOG("Launcher background decoded %dx%d", width, height);
+                render_interface.queue_image_from_bytes_rgba32(
+                    "launcher_background",
+                    rgba,
+                    static_cast<uint32_t>(width),
+                    static_cast<uint32_t>(height));
+                stbi_image_free(decoded);
+            }
+            else {
+                ZELDA_UI_LOG("Launcher background decode failed: %s", stbi_failure_reason());
+                render_interface.queue_image_from_bytes_file("launcher_background", image_bytes);
+            }
+        }
     }
 
     void load_clock_overlay_images() {
@@ -728,6 +767,80 @@ public:
         load_clock_overlay_images();
     }
 
+    void create_pause_save_prompt_overlay_context() {
+        pause_save_prompt_overlay_context = recompui::create_context();
+        pause_save_prompt_overlay_context.set_captures_input(false);
+        pause_save_prompt_overlay_context.set_captures_mouse(false);
+    }
+
+    void hide_pause_save_prompt_overlay() {
+        pause_save_prompt_overlay_markup.clear();
+        if (pause_save_prompt_overlay_context != recompui::ContextId::null()) {
+            pause_save_prompt_overlay_context.get_document()->SetInnerRML("");
+            if (is_context_shown(pause_save_prompt_overlay_context)) {
+                hide_context(pause_save_prompt_overlay_context);
+            }
+        }
+    }
+
+    void update_pause_save_prompt_overlay() {
+        if (is_context_capturing_input() || !ultramodern::is_game_started() ||
+            pause_save_prompt_overlay_context == recompui::ContextId::null()) {
+            hide_pause_save_prompt_overlay();
+            return;
+        }
+
+        zelda64::PauseSavePromptOverlayState state = zelda64::get_pause_save_prompt_overlay_state();
+        if (!state.visible || state.alpha <= 0) {
+            hide_pause_save_prompt_overlay();
+            return;
+        }
+
+        const int alpha = std::max(0, std::min(255, state.alpha));
+        const float opacity = alpha / 255.0f;
+        const bool saved = state.save_prompt_state >= 5 && state.save_prompt_state != 6;
+        const bool no_selected = state.prompt_choice != 0;
+
+        const auto append_text = [](std::ostringstream& stream, const char* text, float left, float top, float width,
+                                    float font_size) {
+            const auto append_layer = [&](const char* color, float x_offset, float y_offset) {
+                stream << "<div style=\"position:absolute; left:50%; top:" << std::fixed << std::setprecision(1)
+                       << (top + y_offset) << "dp; margin-left:" << (left + x_offset) << "dp; width:" << width
+                       << "dp; text-align:center; font-size:" << font_size << "dp; color:" << color << ";\">"
+                       << text << "</div>";
+            };
+            append_layer("rgba(0,0,0,230)", 3.0f, 3.0f);
+            append_layer("white", 0.0f, 0.0f);
+        };
+
+        std::ostringstream html;
+        html << "<div style=\"position:absolute; left:0; top:0; width:100%; height:100%; "
+                "font-family:Chiaro; font-weight:bold; pointer-events:none; opacity:"
+             << std::fixed << std::setprecision(3) << opacity << ";\">";
+
+        if (saved) {
+            append_text(html, "Save complete.", -260.0f, 454.0f, 520.0f, 54.0f);
+        }
+        else {
+            append_text(html, "Would you like to save?", -420.0f, 380.0f, 840.0f, 54.0f);
+            append_text(html, "Yes", -250.0f, 574.0f, 180.0f, 54.0f);
+            append_text(html, "No", 70.0f, 574.0f, 180.0f, 54.0f);
+        }
+
+        append_text(html, "to decide", -86.0f, 918.0f, 300.0f, 42.0f);
+        html << "</div>";
+
+        std::string new_markup = html.str();
+        if (new_markup != pause_save_prompt_overlay_markup) {
+            pause_save_prompt_overlay_markup = std::move(new_markup);
+            pause_save_prompt_overlay_context.get_document()->SetInnerRML(pause_save_prompt_overlay_markup);
+        }
+
+        if (!is_context_shown(pause_save_prompt_overlay_context)) {
+            show_context(pause_save_prompt_overlay_context);
+        }
+    }
+
     void request_clock_texture_reload() {
         clock_texture_reload_requested.store(true);
     }
@@ -739,6 +852,13 @@ public:
             if (clock_overlay_context != recompui::ContextId::null()) {
                 clock_overlay_context.get_document()->SetInnerRML("");
             }
+        }
+
+        if (is_context_capturing_input()) {
+            if (clock_overlay_context != recompui::ContextId::null() && is_context_shown(clock_overlay_context)) {
+                hide_context(clock_overlay_context);
+            }
+            return;
         }
 
         const zelda64::ClockStyle clock_style = zelda64::get_clock_style();
@@ -1253,6 +1373,7 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
     ui_state->update_primary_input(mouse_moved, non_mouse_interacted);
     ui_state->update_focus(mouse_moved, non_mouse_interacted);
     ui_state->update_clock_overlay();
+    ui_state->update_pause_save_prompt_overlay();
 
     if (recompui::is_any_context_shown()) {
         ui_state->update_contexts();
@@ -1266,7 +1387,9 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
         // Scale the UI based on the window size with 1080 vertical resolution as the reference point.
         ui_state->context->SetDensityIndependentPixelRatio((height) / 1080.0f);
 
-        ui_state->render_interface.start(command_list, width, height);
+        const bool show_launcher_background = !ultramodern::is_game_started();
+        ui_state->render_interface.set_launcher_background_visible(show_launcher_background);
+        ui_state->render_interface.start(command_list, width, height, show_launcher_background ? swap_chain_framebuffer : nullptr);
 
         static int prev_width = 0;
         static int prev_height = 0;
@@ -1278,6 +1401,9 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
         prev_height = height;
 
         ui_state->context->Update();
+        if (show_launcher_background) {
+            ui_state->render_interface.render_launcher_background();
+        }
         ui_state->context->Render();
         ui_state->render_interface.end(command_list, swap_chain_framebuffer);
     }

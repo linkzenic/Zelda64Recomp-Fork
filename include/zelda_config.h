@@ -84,6 +84,21 @@ namespace zelda64 {
     AutosaveMode get_autosave_mode();
     void set_autosave_mode(AutosaveMode mode);
 
+    enum class SaveAnywhereMode {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::SaveAnywhereMode, {
+        {zelda64::SaveAnywhereMode::Off, "Off"},
+        {zelda64::SaveAnywhereMode::On, "On"}
+    });
+
+    SaveAnywhereMode get_save_anywhere_mode();
+    void set_save_anywhere_mode(SaveAnywhereMode mode);
+    bool get_save_anywhere_enabled();
+
     AnalogCamMode get_analog_cam_mode();
     void set_analog_cam_mode(AnalogCamMode mode);
 

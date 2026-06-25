@@ -1,3 +1,5 @@
+$android-focus-purple: #35105F;
+
 .config-option {
     display: flex;
     flex: 1;
@@ -97,8 +99,8 @@
             transition: none;
             animation: $focus-anim-border;
             border-bottom: 1dp;
-            border-color: $color-secondary;
-            color: $color-secondary;
+            border-color: $android-focus-purple;
+            color: $android-focus-purple;
         }
     }
 
@@ -151,8 +153,8 @@
             .rmlui-window:not([mouse-active]) &:focus + .config-option__tab-label {
                 transition: none;
                 animation: $focus-anim-border;
-                border-color: $color-secondary;
-                color: $color-secondary;
+                border-color: $android-focus-purple;
+                color: $android-focus-purple;
             }
 
             &:focus + .config-option__tab-label,
@@ -189,7 +191,7 @@
         background-color: $color-text-dim;
         
         .rmlui-window:not([mouse-active]) &:focus {
-            @include border($color-a);
+            @include border($android-focus-purple);
             animation: $focus-anim-bg;
         }
 
@@ -308,7 +310,7 @@
             background-color: $color-text-dim;
             
             .rmlui-window:not([mouse-active]) &:focus {
-                @include border($color-a);
+                @include border($android-focus-purple);
                 animation: $focus-anim-bg;
             }
 

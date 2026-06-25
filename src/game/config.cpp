@@ -248,6 +248,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["mouse_sensitivity"] = recomp::get_mouse_sensitivity();
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
     config_json["autosave_mode"] = zelda64::get_autosave_mode();
+    config_json["save_anywhere_mode"] = zelda64::get_save_anywhere_mode();
     config_json["camera_invert_mode"] = zelda64::get_camera_invert_mode();
     config_json["analog_cam_mode"] = zelda64::get_analog_cam_mode();
     config_json["analog_camera_distance"] = zelda64::get_analog_camera_distance();
@@ -267,6 +268,7 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", is_steam_deck ? 50 : 0));
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 5));
     zelda64::set_autosave_mode(from_or_default(config_json, "autosave_mode", zelda64::AutosaveMode::On));
+    zelda64::set_save_anywhere_mode(from_or_default(config_json, "save_anywhere_mode", zelda64::SaveAnywhereMode::Off));
     zelda64::set_camera_invert_mode(from_or_default(config_json, "camera_invert_mode", zelda64::CameraInvertMode::InvertY));
     zelda64::set_analog_cam_mode(from_or_default(config_json, "analog_cam_mode", zelda64::AnalogCamMode::Off));
     zelda64::set_analog_camera_distance(from_or_default(config_json, "analog_camera_distance", 185));

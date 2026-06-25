@@ -2,6 +2,7 @@
 
 #include "variables.h"
 #include "macros.h"
+#include "functions.h"
 
 #define SAVE_EDITOR_MAGIC_SINGLE_METER 0x30
 #define MIN_HEARTS 3
@@ -49,6 +50,13 @@ typedef struct {
     s32 dungeon;
     s32 max_keys;
 } SaveEditorDungeon;
+
+typedef struct {
+    BuiltinSaveEditorValueId value_id;
+    s32 tingle_map;
+    s32 week_event_flag;
+    u16 cloud_mask;
+} SaveEditorTingleMap;
 
 static const SaveEditorItemToggle s_item_toggles[] = {
     { SAVE_EDITOR_VALUE_POWDER_KEG, ITEM_POWDER_KEG },
@@ -128,6 +136,21 @@ static const SaveEditorDungeon s_dungeons[] = {
       SAVE_EDITOR_VALUE_STONE_TOWER_STRAY_FAIRIES, DUNGEON_INDEX_STONE_TOWER_TEMPLE, 4 },
 };
 
+static const SaveEditorTingleMap s_tingle_maps[] = {
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_CLOCK_TOWN, TINGLE_MAP_CLOCK_TOWN,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_CLOCK_TOWN, 0x0003 },
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_WOODFALL, TINGLE_MAP_WOODFALL,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_WOODFALL, 0x001C },
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_SNOWHEAD, TINGLE_MAP_SNOWHEAD,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_SNOWHEAD, 0x00E0 },
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_ROMANI_RANCH, TINGLE_MAP_ROMANI_RANCH,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_ROMANI_RANCH, 0x0100 },
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_GREAT_BAY, TINGLE_MAP_GREAT_BAY,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_GREAT_BAY, 0x1E00 },
+    { SAVE_EDITOR_VALUE_TINGLE_MAP_STONE_TOWER, TINGLE_MAP_STONE_TOWER,
+      WEEKEVENTREG_TINGLE_MAP_BOUGHT_STONE_TOWER, 0x6000 },
+};
+
 static s32 wallet_cap(void) {
     switch (GET_CUR_UPG_VALUE(UPG_WALLET)) {
         case 0:
@@ -139,6 +162,18 @@ static s32 wallet_cap(void) {
         default:
             return 999;
     }
+}
+
+static s32 current_magic_level(void) {
+    if (!gSaveContext.save.saveInfo.playerData.isMagicAcquired) {
+        return 0;
+    }
+
+    if (gSaveContext.save.saveInfo.playerData.magicLevel != 0) {
+        return clamp_s32(gSaveContext.save.saveInfo.playerData.magicLevel, 1, 2);
+    }
+
+    return gSaveContext.save.saveInfo.playerData.isDoubleMagicAcquired ? 2 : 1;
 }
 
 static void set_quest_flag(s32 quest, bool enabled) {
@@ -154,6 +189,16 @@ static void set_dungeon_flag(s32 dungeon, s32 item, bool enabled) {
         SET_DUNGEON_ITEM(item, dungeon);
     } else {
         gSaveContext.save.saveInfo.inventory.dungeonItems[dungeon] &= (u8)~gBitFlags[item];
+    }
+}
+
+static void set_tingle_map(const SaveEditorTingleMap* map, bool enabled) {
+    if (enabled) {
+        Inventory_SetWorldMapCloudVisibility(map->tingle_map);
+        SET_WEEKEVENTREG(map->week_event_flag);
+    } else {
+        CLEAR_WEEKEVENTREG(map->week_event_flag);
+        gSaveContext.save.saveInfo.worldMapCloudVisibility &= (u16)~map->cloud_mask;
     }
 }
 
@@ -190,9 +235,13 @@ static void clamp_live_save(void) {
         clamp_s32(gSaveContext.save.saveInfo.playerData.rupees, 0, max_rupees);
     gSaveContext.save.saveInfo.playerData.magicLevel =
         clamp_s32(gSaveContext.save.saveInfo.playerData.magicLevel, 0, 2);
+    s32 magic_capacity = current_magic_level() * SAVE_EDITOR_MAGIC_SINGLE_METER;
+    if (gSaveContext.magicCapacity < magic_capacity) {
+        gSaveContext.magicCapacity = magic_capacity;
+    }
     gSaveContext.magicCapacity = clamp_s32(gSaveContext.magicCapacity, 0, SAVE_EDITOR_MAGIC_SINGLE_METER * 2);
     gSaveContext.save.saveInfo.playerData.magic =
-        clamp_s32(gSaveContext.save.saveInfo.playerData.magic, 0, gSaveContext.magicCapacity);
+        clamp_s32(gSaveContext.save.saveInfo.playerData.magic, 0, magic_capacity);
 }
 
 static void sync_snapshot_from_save(void) {
@@ -209,7 +258,7 @@ static void sync_snapshot_from_save(void) {
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_HEARTS, gSaveContext.save.saveInfo.playerData.healthCapacity / 0x10);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_HEALTH, gSaveContext.save.saveInfo.playerData.health);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_DOUBLE_DEFENSE, gSaveContext.save.saveInfo.playerData.doubleDefense ? 1 : 0);
-    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_MAGIC_LEVEL, gSaveContext.save.saveInfo.playerData.magicLevel);
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_MAGIC_LEVEL, current_magic_level());
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_MAGIC, gSaveContext.save.saveInfo.playerData.magic);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_SWORD, GET_CUR_EQUIP_VALUE(EQUIP_TYPE_SWORD));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_SHIELD, GET_CUR_EQUIP_VALUE(EQUIP_TYPE_SHIELD));
@@ -226,6 +275,10 @@ static void sync_snapshot_from_save(void) {
         recomp_save_editor_set_snapshot_value(
             s_item_toggles[i].value_id,
             GET_INV_CONTENT(s_item_toggles[i].item) == s_item_toggles[i].item ? 1 : 0);
+    }
+    for (s32 i = 0; i < ARRAY_COUNT(s_tingle_maps); i++) {
+        recomp_save_editor_set_snapshot_value(s_tingle_maps[i].value_id,
+                                              CHECK_WEEKEVENTREG(s_tingle_maps[i].week_event_flag) ? 1 : 0);
     }
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_HEART_PIECES, GET_QUEST_HEART_PIECE_COUNT);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBERS_NOTEBOOK,
@@ -254,6 +307,7 @@ static s32 pending(BuiltinSaveEditorValueId id) {
 static void apply_pending_to_save(PlayState* play) {
     s32 hearts = clamp_s32(pending(SAVE_EDITOR_VALUE_HEARTS), MIN_HEARTS, MAX_HEARTS);
     s32 magic_level = clamp_s32(pending(SAVE_EDITOR_VALUE_MAGIC_LEVEL), 0, 2);
+    s32 pending_magic = pending(SAVE_EDITOR_VALUE_MAGIC);
 
     apply_live_day_time(play, pending(SAVE_EDITOR_VALUE_DAY), pending(SAVE_EDITOR_VALUE_TIME),
                         pending(SAVE_EDITOR_VALUE_TIME_SPEED));
@@ -270,10 +324,11 @@ static void apply_pending_to_save(PlayState* play) {
     gSaveContext.save.saveInfo.inventory.defenseHearts =
         gSaveContext.save.saveInfo.playerData.doubleDefense ? MAX_HEARTS : 0;
     gSaveContext.save.saveInfo.playerData.magicLevel = magic_level;
-    gSaveContext.save.saveInfo.playerData.magic = pending(SAVE_EDITOR_VALUE_MAGIC);
     gSaveContext.save.saveInfo.playerData.isMagicAcquired = magic_level >= 1;
     gSaveContext.save.saveInfo.playerData.isDoubleMagicAcquired = magic_level >= 2;
     gSaveContext.magicCapacity = magic_level * SAVE_EDITOR_MAGIC_SINGLE_METER;
+    gSaveContext.save.saveInfo.playerData.magic =
+        clamp_s32(pending_magic, 0, gSaveContext.magicCapacity);
     gSaveContext.magicFillTarget = gSaveContext.magicCapacity;
 
     SET_EQUIP_VALUE(EQUIP_TYPE_SWORD,
@@ -300,6 +355,9 @@ static void apply_pending_to_save(PlayState* play) {
     }
     for (s32 i = 0; i < ARRAY_COUNT(s_item_toggles); i++) {
         INV_CONTENT(s_item_toggles[i].item) = pending(s_item_toggles[i].value_id) != 0 ? s_item_toggles[i].item : ITEM_NONE;
+    }
+    for (s32 i = 0; i < ARRAY_COUNT(s_tingle_maps); i++) {
+        set_tingle_map(&s_tingle_maps[i], pending(s_tingle_maps[i].value_id) != 0);
     }
     set_heart_piece_count(pending(SAVE_EDITOR_VALUE_HEART_PIECES));
     set_quest_flag(QUEST_BOMBERS_NOTEBOOK, pending(SAVE_EDITOR_VALUE_BOMBERS_NOTEBOOK) != 0);
