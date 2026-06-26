@@ -68,6 +68,7 @@ void FileSelect_Main(GameState* thisx);
 void FileSelect_InitContext(GameState* thisx);
 void FileSelect_DrawFileInfo(GameState *thisx, s16 fileIndex);
 void FileSelect_SplitNumber(u16 value, u16 *hundreds, u16 *tens, u16 *ones);
+extern s32 recomp_force_normal_save_load;
 
 // @recomp The options button is now the quit button, so close recomp instead of opening the options.
 RECOMP_PATCH void FileSelect_RotateToOptions(GameState* thisx) {
@@ -1056,11 +1057,13 @@ RECOMP_PATCH void FileSelect_LoadGame(GameState* thisx) {
 
     // @recomp Temporarily disable the owl save for this slot if the Rewind button was pressed.
     u8 was_owl_save = this->isOwlSave[gSaveContext.fileNum + 2];
-    if (this->confirmButtonIndex == FS_BTN_CONFIRM_REWIND) {
+    recomp_force_normal_save_load = this->confirmButtonIndex == FS_BTN_CONFIRM_REWIND;
+    if (recomp_force_normal_save_load) {
         this->isOwlSave[gSaveContext.fileNum + 2] = false;
     }
 
     Sram_OpenSave(this, &this->sramCtx);
+    recomp_force_normal_save_load = false;
 
     // @recomp Re-enable the owl save for this slot after the file has been loaded.
     this->isOwlSave[gSaveContext.fileNum + 2] = was_owl_save;

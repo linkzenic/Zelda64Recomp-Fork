@@ -17,6 +17,8 @@ extern s16* sVtxPageQuadsX[VTX_PAGE_MAX];
 extern s16* sVtxPageQuadsWidth[VTX_PAGE_MAX];
 extern s16* sVtxPageQuadsY[VTX_PAGE_MAX];
 extern s16* sVtxPageQuadsHeight[VTX_PAGE_MAX];
+extern s32 D_801BDAA0;
+extern s32 recomp_moon_crash_reset_pending;
 
 s16 sVtxPageGameOverSaveQuadsY[VTX_PAGE_SAVE_QUADS] = {
     14,  // promptPageVtx[60] QUAD_PROMPT_MESSAGE
@@ -582,6 +584,16 @@ RECOMP_PATCH void DayTelop_Init(GameState* thisx) {
     // @recomp Add 120 extra frames (2 seconds with a frame divisor of 1) to account for faster loading.
     this->transitionCountdown = 260;
     this->fadeInState = DAYTELOP_HOURSTEXT_OFF;
+
+    if (D_801BDAA0 || recomp_moon_crash_reset_pending) {
+        gSaveContext.save.timeSpeedOffset = 0;
+        gSaveContext.save.eventDayCount = 0;
+        gSaveContext.save.day = 0;
+        gSaveContext.save.time = CLOCK_TIME(6, 0) - 1;
+        gSaveContext.nextDayTime = NEXT_TIME_NONE;
+        CLEAR_EVENTINF(EVENTINF_TRIGGER_DAYTELOP);
+        recomp_moon_crash_reset_pending = false;
+    }
 
     if (gSaveContext.save.day < 9) {
         if (gSaveContext.save.day == 0) {

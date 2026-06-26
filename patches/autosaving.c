@@ -11,6 +11,11 @@
 #define SAVE_TYPE_AUTOSAVE 2
 #define SAVE_ANYWHERE_RESUME_FLAG 0x80000000
 
+// Set by file select when the user intentionally chooses the normal save instead
+// of the hidden resume/autosave slot.
+s32 recomp_force_normal_save_load = false;
+s32 recomp_moon_crash_reset_pending = false;
+
 u8 gCanPause;
 s32 ShrinkWindow_Letterbox_GetSizeTarget(void);
 void ShrinkWindow_Letterbox_SetSizeTarget(s32 target);
@@ -531,6 +536,36 @@ extern u16 D_801C6A58[];
 #define CHECK_NEWF(newf)                                                                                 \
     ((newf)[0] != 'Z' || (newf)[1] != 'E' || (newf)[2] != 'L' || (newf)[3] != 'D' || (newf)[4] != 'A' || \
      (newf)[5] != '3')
+
+static s32 autosave_buffer_has_hidden_resume(SramContext* sramCtx) {
+    SaveContext* saveContext = (SaveContext*)sramCtx->saveBuf;
+
+    return !CHECK_NEWF(saveContext->save.saveInfo.playerData.newf) &&
+           (saveContext->save.isOwlSave == SAVE_TYPE_AUTOSAVE);
+}
+
+static s32 autosave_try_read_hidden_resume(SramContext* sramCtx, s32 fileNum, s32* saveSlotIndex) {
+    s32 slotIndex = (fileNum + 2) * 2;
+
+    if (SysFlashrom_ReadData(sramCtx->saveBuf, gFlashSaveStartPages[slotIndex], gFlashSaveNumPages[slotIndex]) != 0) {
+        SysFlashrom_ReadData(sramCtx->saveBuf, gFlashSaveStartPages[slotIndex + 1], gFlashSaveNumPages[slotIndex + 1]);
+    }
+
+    if (autosave_buffer_has_hidden_resume(sramCtx)) {
+        *saveSlotIndex = slotIndex;
+        return true;
+    }
+
+    SysFlashrom_ReadData(sramCtx->saveBuf, gFlashSaveStartPages[slotIndex + 1], gFlashSaveNumPages[slotIndex + 1]);
+
+    if (autosave_buffer_has_hidden_resume(sramCtx)) {
+        *saveSlotIndex = slotIndex;
+        return true;
+    }
+
+    bzero(sramCtx->saveBuf, SAVE_BUFFER_SIZE);
+    return false;
+}
      
 typedef struct {
     /* 0x00 */ s16 csId;
@@ -626,6 +661,69 @@ static void save_anywhere_prepare_resume_load(void) {
     gSaveContext.save.saveInfo.unk_EA4 &= ~SAVE_ANYWHERE_RESUME_FLAG;
 }
 
+static void moon_crash_reset_clock_to_first_day(void) {
+    gSaveContext.save.timeSpeedOffset = 0;
+    gSaveContext.save.eventDayCount = 0;
+    gSaveContext.save.day = 0;
+    gSaveContext.save.time = CLOCK_TIME(6, 0) - 1;
+    gSaveContext.nextDayTime = NEXT_TIME_NONE;
+    CLEAR_EVENTINF(EVENTINF_TRIGGER_DAYTELOP);
+}
+
+static void moon_crash_apply_three_day_losses(void) {
+    s32 i;
+    u8 item;
+
+    CLEAR_EVENTINF(EVENTINF_THREEDAYRESET_LOST_RUPEES);
+    CLEAR_EVENTINF(EVENTINF_THREEDAYRESET_LOST_BOMB_AMMO);
+    CLEAR_EVENTINF(EVENTINF_THREEDAYRESET_LOST_NUT_AMMO);
+    CLEAR_EVENTINF(EVENTINF_THREEDAYRESET_LOST_STICK_AMMO);
+    CLEAR_EVENTINF(EVENTINF_THREEDAYRESET_LOST_ARROW_AMMO);
+
+    if (gSaveContext.save.saveInfo.playerData.rupees != 0) {
+        SET_EVENTINF(EVENTINF_THREEDAYRESET_LOST_RUPEES);
+    }
+
+    if (INV_CONTENT(ITEM_BOMB) == ITEM_BOMB) {
+        item = INV_CONTENT(ITEM_BOMB);
+        if (AMMO(item) != 0) {
+            SET_EVENTINF(EVENTINF_THREEDAYRESET_LOST_BOMB_AMMO);
+        }
+    }
+
+    if (INV_CONTENT(ITEM_DEKU_NUT) == ITEM_DEKU_NUT) {
+        item = INV_CONTENT(ITEM_DEKU_NUT);
+        if (AMMO(item) != 0) {
+            SET_EVENTINF(EVENTINF_THREEDAYRESET_LOST_NUT_AMMO);
+        }
+    }
+
+    if (INV_CONTENT(ITEM_DEKU_STICK) == ITEM_DEKU_STICK) {
+        item = INV_CONTENT(ITEM_DEKU_STICK);
+        if (AMMO(item) != 0) {
+            SET_EVENTINF(EVENTINF_THREEDAYRESET_LOST_STICK_AMMO);
+        }
+    }
+
+    if (INV_CONTENT(ITEM_BOW) == ITEM_BOW) {
+        item = INV_CONTENT(ITEM_BOW);
+        if (AMMO(item) != 0) {
+            SET_EVENTINF(EVENTINF_THREEDAYRESET_LOST_ARROW_AMMO);
+        }
+    }
+
+    for (i = 0; i < ITEM_NUM_SLOTS; i++) {
+        if ((gAmmoItems[i] != ITEM_NONE) && (gSaveContext.save.saveInfo.inventory.items[i] != ITEM_NONE) &&
+            (i != SLOT_PICTOGRAPH_BOX)) {
+            item = gSaveContext.save.saveInfo.inventory.items[i];
+            AMMO(item) = 0;
+        }
+    }
+
+    gSaveContext.save.saveInfo.playerData.rupees = 0;
+    gSaveContext.rupeeAccumulator = 0;
+}
+
 static void autosave_sanitize_samsung_load(void) {
     s32 scene_id;
 
@@ -671,7 +769,7 @@ RECOMP_PATCH void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCt
 
         if (gSaveContext.fileNum == 0xFF) {
             SysFlashrom_ReadData(sramCtx->saveBuf, gFlashSaveStartPages[0], gFlashSaveNumPages[0]);
-        } else if (fileSelect->isOwlSave[gSaveContext.fileNum + 2]) {
+        } else if (!recomp_force_normal_save_load && fileSelect->isOwlSave[gSaveContext.fileNum + 2]) {
             phi_t1 = gSaveContext.fileNum + 2;
             phi_t1 *= 2;
 
@@ -679,6 +777,9 @@ RECOMP_PATCH void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCt
                 SysFlashrom_ReadData(sramCtx->saveBuf, gFlashSaveStartPages[phi_t1 + 1],
                                      gFlashSaveNumPages[phi_t1 + 1]);
             }
+        } else if (!recomp_force_normal_save_load &&
+                   autosave_try_read_hidden_resume(sramCtx, gSaveContext.fileNum, &phi_t1)) {
+            fileSelect->isOwlSave[gSaveContext.fileNum + 2] = SAVE_TYPE_AUTOSAVE;
         } else {
             phi_t1 = gSaveContext.fileNum;
             phi_t1 *= 2;
@@ -847,11 +948,20 @@ RECOMP_PATCH void Sram_ResetSaveFromMoonCrash(SramContext* sramCtx) {
                                  gFlashSaveNumPages[gSaveContext.fileNum * 2 + 1]);
             Lib_MemCpy(&gSaveContext, sramCtx->saveBuf, sizeof(Save));
         }
+        Sram_ClearFlagsAtDawnOfTheFirstDay();
+        moon_crash_reset_clock_to_first_day();
+        recomp_moon_crash_reset_pending = true;
+        gSaveContext.save.isOwlSave = false;
+        gSaveContext.save.saveInfo.unk_EA4 &= ~SAVE_ANYWHERE_RESUME_FLAG;
         gSaveContext.save.cutsceneIndex = cutsceneIndex;
     }
 
     for (i = 0; i < ARRAY_COUNT(gSaveContext.eventInf); i++) {
         gSaveContext.eventInf[i] = 0;
+    }
+
+    if (moon_crash_resets_save) {
+        moon_crash_apply_three_day_losses();
     }
 
     for (i = 0; i < ARRAY_COUNT(gSaveContext.cycleSceneFlags); i++) {
