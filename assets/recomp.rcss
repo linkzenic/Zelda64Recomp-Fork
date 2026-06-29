@@ -2001,7 +2001,7 @@ scrollbarhorizontal sliderbar {
   right: 0;
   left: 50%;
   align-items: flex-end;
-  background: linear-gradient(90deg, rgba(8, 7, 13, 0) 0%, rgba(8, 7, 13, 0.56) 48%, rgba(8, 7, 13, 0.82) 100%);
+  background-color: rgba(8, 7, 13, 0);
 }
 
 @keyframes slide-mm-bg-over {

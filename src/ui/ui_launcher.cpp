@@ -16,20 +16,17 @@ bool safe_mode_enabled = false;
 
 extern std::vector<recomp::GameEntry> supported_games;
 
-static bool android_safe_mode_from_env() {
-#if defined(__ANDROID__)
+static bool n64_mode_from_env() {
     const char* safe_mode = std::getenv("APP_SAFE_MODE");
-    return safe_mode != nullptr && safe_mode[0] == '1';
-#else
-    return false;
-#endif
+    const char* n64_mode = std::getenv("APP_N64_MODE");
+    return (safe_mode != nullptr && safe_mode[0] == '1') ||
+        (n64_mode != nullptr && n64_mode[0] == '1');
 }
 
-static void set_android_safe_mode(bool enabled) {
+static void set_n64_mode(bool enabled) {
     safe_mode_enabled = enabled;
-#if defined(__ANDROID__)
     setenv("APP_SAFE_MODE", enabled ? "1" : "0", 1);
-#endif
+    setenv("APP_N64_MODE", enabled ? "1" : "0", 1);
     if (model_handle) {
         model_handle.DirtyVariable("safe_mode_enabled");
     }
@@ -79,7 +76,7 @@ class LauncherMenu : public recompui::MenuController {
 public:
     LauncherMenu() {
         mm_rom_valid = recomp::is_rom_valid(supported_games[0].game_id);
-        safe_mode_enabled = android_safe_mode_from_env();
+        safe_mode_enabled = n64_mode_from_env();
     }
     ~LauncherMenu() override {
 
@@ -101,13 +98,14 @@ public:
         );
         recompui::register_event(listener, "start_game",
             [](const std::string& param, Rml::Event& event) {
+                set_n64_mode(false);
                 recomp::start_game(supported_games[0].game_id);
                 recompui::hide_all_contexts();
             }
         );
         recompui::register_event(listener, "start_safe_mode",
             [](const std::string& param, Rml::Event& event) {
-                set_android_safe_mode(true);
+                set_n64_mode(true);
                 recomp::start_game(supported_games[0].game_id);
                 recompui::hide_all_contexts();
             }

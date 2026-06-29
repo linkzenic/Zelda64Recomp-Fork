@@ -229,6 +229,7 @@ int run_probe() {
         SDL_Quit();
         return 6;
     }
+    probe_log(ANDROID_LOG_INFO, "SDL_Vulkan_CreateSurface succeeded; continuing to device-only probe");
 
     uint32_t device_count = 0;
     result = vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
@@ -293,6 +294,8 @@ int run_probe() {
         return 9;
     }
 
+    probe_log(ANDROID_LOG_INFO, "Vulkan device created; continuing to surface caps/formats/present modes");
+
     VkSurfaceCapabilitiesKHR capabilities{};
     result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities);
     probe_log(ANDROID_LOG_INFO,
@@ -327,6 +330,8 @@ int run_probe() {
     for (uint32_t i = 0; i < present_mode_count; i++) {
         probe_log(ANDROID_LOG_INFO, "present mode %u: %u", i, present_modes[i]);
     }
+
+    probe_log(ANDROID_LOG_INFO, "Vulkan surface queries completed; continuing to swapchain creation");
 
     VkExtent2D extent = capabilities.currentExtent;
     if (extent.width == std::numeric_limits<uint32_t>::max()) {
@@ -388,17 +393,237 @@ int run_probe() {
               swapchain_info.compositeAlpha,
               swapchain_info.presentMode);
 
+    VkQueue queue = VK_NULL_HANDLE;
+    vkGetDeviceQueue(device, queue_family, 0, &queue);
+
+    uint32_t swapchain_image_count = 0;
+    if (swapchain != VK_NULL_HANDLE) {
+        result = vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, nullptr);
+        probe_log(ANDROID_LOG_INFO, "vkGetSwapchainImagesKHR count result=%s (%d) count=%u",
+                  vk_result_name(result),
+                  result,
+                  swapchain_image_count);
+    }
+
+    std::vector<VkImage> swapchain_images(swapchain_image_count);
+    if (swapchain != VK_NULL_HANDLE && swapchain_image_count > 0) {
+        result = vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, swapchain_images.data());
+        probe_log(ANDROID_LOG_INFO, "vkGetSwapchainImagesKHR list result=%s (%d)", vk_result_name(result), result);
+    }
+
+    VkSemaphoreCreateInfo semaphore_info{};
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphore image_available = VK_NULL_HANDLE;
+    result = vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available);
+    probe_log(ANDROID_LOG_INFO, "vkCreateSemaphore image_available result=%s (%d)", vk_result_name(result), result);
+    VkSemaphore render_finished = VK_NULL_HANDLE;
+    result = vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished);
+    probe_log(ANDROID_LOG_INFO, "vkCreateSemaphore render_finished result=%s (%d)", vk_result_name(result), result);
+
+    std::vector<VkImageView> image_views;
+    image_views.reserve(swapchain_image_count);
+    for (uint32_t i = 0; i < swapchain_image_count; i++) {
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = swapchain_images[i];
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = chosen_format.format;
+        view_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+
+        VkImageView view = VK_NULL_HANDLE;
+        result = vkCreateImageView(device, &view_info, nullptr, &view);
+        probe_log(ANDROID_LOG_INFO, "vkCreateImageView %u result=%s (%d)", i, vk_result_name(result), result);
+        image_views.push_back(view);
+    }
+
+    VkAttachmentDescription color_attachment{};
+    color_attachment.format = chosen_format.format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference color_attachment_ref{};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo render_pass_info{};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.attachmentCount = 1;
+    render_pass_info.pAttachments = &color_attachment;
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    result = vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass);
+    probe_log(ANDROID_LOG_INFO, "vkCreateRenderPass result=%s (%d)", vk_result_name(result), result);
+
+    std::vector<VkFramebuffer> framebuffers;
+    framebuffers.reserve(image_views.size());
+    for (uint32_t i = 0; i < image_views.size(); i++) {
+        VkFramebufferCreateInfo framebuffer_info{};
+        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_info.renderPass = render_pass;
+        framebuffer_info.attachmentCount = 1;
+        framebuffer_info.pAttachments = &image_views[i];
+        framebuffer_info.width = extent.width;
+        framebuffer_info.height = extent.height;
+        framebuffer_info.layers = 1;
+
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
+        result = vkCreateFramebuffer(device, &framebuffer_info, nullptr, &framebuffer);
+        probe_log(ANDROID_LOG_INFO, "vkCreateFramebuffer %u result=%s (%d)", i, vk_result_name(result), result);
+        framebuffers.push_back(framebuffer);
+    }
+
+    VkCommandPoolCreateInfo command_pool_info{};
+    command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_info.queueFamilyIndex = queue_family;
+    command_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    result = vkCreateCommandPool(device, &command_pool_info, nullptr, &command_pool);
+    probe_log(ANDROID_LOG_INFO, "vkCreateCommandPool result=%s (%d)", vk_result_name(result), result);
+
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    if (command_pool != VK_NULL_HANDLE) {
+        VkCommandBufferAllocateInfo command_buffer_info{};
+        command_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        command_buffer_info.commandPool = command_pool;
+        command_buffer_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        command_buffer_info.commandBufferCount = 1;
+        result = vkAllocateCommandBuffers(device, &command_buffer_info, &command_buffer);
+        probe_log(ANDROID_LOG_INFO, "vkAllocateCommandBuffers result=%s (%d)", vk_result_name(result), result);
+    }
+
     const uint32_t start = SDL_GetTicks();
     SDL_Event event{};
-    while (SDL_GetTicks() - start < 5000) {
+    while (SDL_GetTicks() - start < 600000) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 break;
             }
         }
+
+        if (swapchain != VK_NULL_HANDLE && image_available != VK_NULL_HANDLE && render_finished != VK_NULL_HANDLE) {
+            uint32_t image_index = 0;
+            result = vkAcquireNextImageKHR(device, swapchain, 1000000000ULL, image_available, VK_NULL_HANDLE, &image_index);
+            if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
+                if (command_buffer != VK_NULL_HANDLE) {
+                    VkCommandBufferBeginInfo begin_info{};
+                    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                    VkResult command_result = vkBeginCommandBuffer(command_buffer, &begin_info);
+                    if (command_result == VK_SUCCESS) {
+                        VkClearValue clear{};
+                        clear.color.float32[0] = static_cast<float>((SDL_GetTicks() / 8) % 255) / 255.0f;
+                        clear.color.float32[1] = static_cast<float>((SDL_GetTicks() / 13) % 255) / 255.0f;
+                        clear.color.float32[2] = 0.35f;
+                        clear.color.float32[3] = 1.0f;
+
+                        VkRenderPassBeginInfo render_pass_begin{};
+                        render_pass_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                        render_pass_begin.renderPass = render_pass;
+                        render_pass_begin.framebuffer = image_index < framebuffers.size() ? framebuffers[image_index] : VK_NULL_HANDLE;
+                        render_pass_begin.renderArea.offset = { 0, 0 };
+                        render_pass_begin.renderArea.extent = extent;
+                        render_pass_begin.clearValueCount = 1;
+                        render_pass_begin.pClearValues = &clear;
+
+                        vkCmdBeginRenderPass(command_buffer, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
+                        vkCmdEndRenderPass(command_buffer);
+                        command_result = vkEndCommandBuffer(command_buffer);
+                    }
+                    if (command_result == VK_SUCCESS) {
+                        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                        VkSubmitInfo submit_info{};
+                        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                        submit_info.waitSemaphoreCount = 1;
+                        submit_info.pWaitSemaphores = &image_available;
+                        submit_info.pWaitDstStageMask = &wait_stage;
+                        submit_info.commandBufferCount = 1;
+                        submit_info.pCommandBuffers = &command_buffer;
+                        submit_info.signalSemaphoreCount = 1;
+                        submit_info.pSignalSemaphores = &render_finished;
+                        command_result = vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+                        if (command_result == VK_SUCCESS) {
+                            command_result = vkQueueWaitIdle(queue);
+                        }
+                    }
+                    if (command_result != VK_SUCCESS) {
+                        probe_log(ANDROID_LOG_ERROR, "empty command submit failed: %s (%d)", vk_result_name(command_result), command_result);
+                        break;
+                    }
+                }
+
+                VkPresentInfoKHR present_info{};
+                present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+                present_info.waitSemaphoreCount = 1;
+                present_info.pWaitSemaphores = &render_finished;
+                present_info.swapchainCount = 1;
+                present_info.pSwapchains = &swapchain;
+                present_info.pImageIndices = &image_index;
+                VkResult present_result = vkQueuePresentKHR(queue, &present_info);
+                static uint32_t present_count = 0;
+                if ((present_count++ % 60) == 0) {
+                    probe_log(ANDROID_LOG_INFO,
+                              "acquire/present result acquire=%s (%d) present=%s (%d) image=%u",
+                              vk_result_name(result),
+                              result,
+                              vk_result_name(present_result),
+                              present_result,
+                              image_index);
+                }
+                if (present_result != VK_SUCCESS && present_result != VK_SUBOPTIMAL_KHR) {
+                    probe_log(ANDROID_LOG_ERROR, "vkQueuePresentKHR failed: %s (%d)", vk_result_name(present_result), present_result);
+                    break;
+                }
+            } else {
+                probe_log(ANDROID_LOG_ERROR, "vkAcquireNextImageKHR failed: %s (%d)", vk_result_name(result), result);
+                break;
+            }
+        }
+
         SDL_Delay(16);
     }
 
+    if (command_pool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, command_pool, nullptr);
+    }
+    for (VkFramebuffer framebuffer : framebuffers) {
+        if (framebuffer != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+    }
+    if (render_pass != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(device, render_pass, nullptr);
+    }
+    for (VkImageView view : image_views) {
+        if (view != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, view, nullptr);
+        }
+    }
+    if (render_finished != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device, render_finished, nullptr);
+    }
+    if (image_available != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device, image_available, nullptr);
+    }
     if (swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(device, swapchain, nullptr);
     }

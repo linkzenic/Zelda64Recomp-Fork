@@ -102,7 +102,7 @@
                                 style="nav-up:#tab_graphics; nav-down: #ds_windowed"
                                 data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_original' : 'nav-up:#tab_graphics; nav-down: #ds_windowed'"
                             />
-                            <label class="config-option__tab-label" for="res_original">Original</label>
+                            <label class="config-option__tab-label" for="res_original">240p</label>
                             <input type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(0)"
@@ -113,7 +113,29 @@
                                 style="nav-up:#tab_graphics; nav-down: #ds_2x"
                                 data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_2x'"
                             />
-                            <label class="config-option__tab-label" for="res_2x">Original 2x</label>
+                            <label class="config-option__tab-label" for="res_2x">480p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="720p"
+                                id="res_720_desktop"
+                                style="nav-up:#tab_graphics; nav-down: #ds_4x"
+                                data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_4x'"
+                            />
+                            <label class="config-option__tab-label" for="res_720_desktop">720p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="1080p"
+                                id="res_1080_desktop"
+                                style="nav-up:#tab_graphics; nav-down: #ds_4x"
+                                data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_4x'"
+                            />
+                            <label class="config-option__tab-label" for="res_1080_desktop">1080p</label>
                             <input type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(0)"
@@ -135,7 +157,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="1"
                                 id="ds_windowed"
@@ -146,7 +168,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="2"
                                 id="ds_2x"
@@ -157,7 +179,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="4"
                                 id="ds_4x"
@@ -398,13 +420,13 @@
                         Sets the internal render resolution. <b>240p</b> and <b>480p</b> are fastest, <b>720p</b> is balanced, <b>1080p</b> is sharper, and <b>Auto</b> uses the screen size without overshooting it.
                     </p>
                     <p data-if="cur_config_index == 0 && !is_android">
-                        Sets the output resolution of the game. <b>Original</b> matches the game's original 240p resolution. <b>Original 2x</b> will render at 480p. <b>Auto</b> will scale based on the game window's resolution.
+                        Sets the output resolution of the game. <b>240p</b> matches the original Nintendo 64 resolution, <b>480p</b>, <b>720p</b>, and <b>1080p</b> use fixed internal scales, and <b>Auto</b> scales based on the game window's resolution.
                     </p>
                     <p data-if="cur_config_index == 1 && !is_android">
-                        Renders at a higher resolution and scales it down to the output resolution for increased quality. Only available in <b>Original</b> and <b>Original 2x</b> resolution.
+                        Renders at a higher resolution and scales it down to the output resolution for increased quality. Only available in <b>240p</b> and <b>480p</b> modes.
                         <br />
                         <br />
-                        Note: <b>4x</b> downsampling quality at <b>Original 2x</b> resolution may cause performance issues on low end devices, as it will cause the game to render <i>at almost 4k internal resolution</i>.
+                        Note: <b>4x</b> downsampling quality at <b>480p</b> may cause performance issues on low end devices, as it will cause the game to render <i>at almost 4k internal resolution</i>.
                     </p>
                     <p data-if="cur_config_index == 1 && is_android">
                         Selects a custom Vulkan driver package from device storage, or switches back to the system Vulkan driver. Requires restart.

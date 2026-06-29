@@ -1,5 +1,7 @@
 package org.libsdl.app;
 
+import io.github.zelda64recomp.BuildConfig;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -722,6 +724,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         if (mNextNativeState == NativeState.RESUMED) {
             if (mSurface.mIsSurfaceReady && mHasFocus && mIsResumedCalled) {
                 if (mSDLThread == null) {
+                    if (BuildConfig.ZELDA_SDL_NO_THREAD_PROBE) {
+                        Log.v(TAG, "ZELDA_SDL_NO_THREAD_PROBE: skipping SDLMain thread start");
+                        mSurface.handleResume();
+                        mCurrentNativeState = mNextNativeState;
+                        return;
+                    }
+
                     // This is the entry point to the C app.
                     // Start up the C app thread and enable sensor input for the first time
                     // FIXME: Why aren't we enabling sensor input at start?

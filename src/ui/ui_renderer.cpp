@@ -6,6 +6,12 @@
 #include <fstream>
 #include <filesystem>
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <cstring>
+#include <sys/system_properties.h>
+#endif
+
 #include <concurrentqueue.h>
 
 #include "rt64_render_hooks.h"
@@ -46,6 +52,18 @@
         ((format) == RT64::RenderShaderFormat::SPIRV ? name##BlobSPIRV : nullptr)
 #    define GET_SHADER_SIZE(name, format) \
         ((format) == RT64::RenderShaderFormat::SPIRV ? std::size(name##BlobSPIRV) : 0)
+#endif
+
+#if defined(__ANDROID__)
+static bool android_property_equals(const char* name, const char* expected) {
+    char value[PROP_VALUE_MAX] = {};
+    return __system_property_get(name, value) > 0 && std::strcmp(value, expected) == 0;
+}
+
+static bool android_emulator_enabled() {
+    return android_property_equals("ro.kernel.qemu", "1") ||
+        android_property_equals("ro.boot.qemu", "1");
+}
 #endif
 
 // TODO deduplicate from rt64_common.h
@@ -155,7 +173,7 @@ class RmlRenderInterface_RT64_impl : public Rml::RenderInterfaceCompatibility {
     bool launcher_background_visible_ = false;
     Rml::TextureHandle launcher_background_handle_ = 0;
     Rml::Vector2i launcher_background_dimensions_ = {};
-    bool render_direct_to_swapchain_ = false;
+    bool skip_frame_ = false;
     std::vector<std::unique_ptr<RT64::RenderBuffer>> stale_buffers_{};
     moodycamel::ConcurrentQueue<ImageFromBytes> image_from_bytes_queue;
     std::unordered_map<std::string, ImageFromBytes> image_from_bytes_map;
@@ -165,6 +183,12 @@ public:
         device_ = device;
         // Enable 4X MSAA if supported by the device.
         const RT64::RenderSampleCounts desired_sample_count = RT64::RenderSampleCount::COUNT_8;
+#if defined(__ANDROID__)
+        if (android_emulator_enabled()) {
+            __android_log_print(ANDROID_LOG_INFO, "ZeldaUI", "Android emulator detected; disabling UI MSAA");
+        }
+        else
+#endif
         if (device_->getSampleCountsSupported(SwapChainFormat) & desired_sample_count) {
             multisampling_.sampleCount = desired_sample_count;
         }
@@ -353,6 +377,10 @@ public:
     }
     
     void RenderGeometry(Rml::Vertex* vertices, int num_vertices, int* indices, int num_indices, Rml::TextureHandle texture, const Rml::Vector2f& translation) override {
+        if (skip_frame_) {
+            return;
+        }
+
         if (!textures_.contains(texture)) {
             if (texture == 0) {
                 Rml::byte white_pixel[] = { 255, 255, 255, 255 };
@@ -584,10 +612,16 @@ public:
     }
 
     void start(RT64::RenderCommandList* list, int image_width, int image_height, RT64::RenderFramebuffer* framebuffer) {
-        list_ = list;
-        render_direct_to_swapchain_ = launcher_background_visible_ && framebuffer != nullptr;
+        skip_frame_ = image_width <= 0 || image_height <= 0 ||
+            (framebuffer != nullptr && (framebuffer->getWidth() == 0 || framebuffer->getHeight() == 0));
+        if (skip_frame_) {
+            list_ = nullptr;
+            return;
+        }
 
-        if (multisampling_.sampleCount > 1 && !render_direct_to_swapchain_) {
+        list_ = list;
+
+        if (multisampling_.sampleCount > 1) {
             if (window_width_ != image_width || window_height_ != image_height) {
                 screen_framebuffer_.reset();
                 screen_texture_ = device_->createTexture(RT64::RenderTextureDesc::ColorTarget(image_width, image_height, SwapChainFormat));
@@ -601,10 +635,6 @@ public:
         }
         else {
             list_->setPipeline(pipeline_.get());
-        }
-
-        if (render_direct_to_swapchain_) {
-            list_->setFramebuffer(framebuffer);
         }
 
         list_->setGraphicsPipelineLayout(layout_.get());
@@ -627,7 +657,7 @@ public:
         reset_dynamic_buffer(index_buffer_);
 
         // Set an internal texture as the render target if MSAA is enabled.
-        if (multisampling_.sampleCount > 1 && !render_direct_to_swapchain_) {
+        if (multisampling_.sampleCount > 1) {
             list->barriers(RT64::RenderBarrierStage::GRAPHICS, RT64::RenderTextureBarrier(screen_texture_ms_.get(), RT64::RenderTextureLayout::COLOR_WRITE));
             list->setFramebuffer(screen_framebuffer_.get());
             list->clearColor(0, RT64::RenderColor(0.0f, 0.0f, 0.0f, 0.0f));
@@ -692,8 +722,13 @@ public:
     }
 
     void end(RT64::RenderCommandList* list, RT64::RenderFramebuffer* framebuffer) {
+        if (skip_frame_) {
+            skip_frame_ = false;
+            return;
+        }
+
         // Draw the texture were rendered the UI in to the swap chain framebuffer if MSAA is enabled.
-        if (multisampling_.sampleCount > 1 && !render_direct_to_swapchain_) {
+        if (multisampling_.sampleCount > 1) {
             RT64::RenderTextureBarrier before_resolve_barriers[] = {
                 RT64::RenderTextureBarrier(screen_texture_ms_.get(), RT64::RenderTextureLayout::RESOLVE_SOURCE),
                 RT64::RenderTextureBarrier(screen_texture_.get(), RT64::RenderTextureLayout::RESOLVE_DEST)

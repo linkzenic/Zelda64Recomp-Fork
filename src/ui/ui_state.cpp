@@ -245,15 +245,15 @@ public:
         launcher_menu_controller->make_bindings(context);
         config_menu_controller->make_bindings(context);
 
-#if defined(__ANDROID__)
-        ZELDA_UI_LOG("Rml debugger skipped on Android");
-#else
+#if defined(ZELDA_ENABLE_RML_DEBUGGER) && !defined(__ANDROID__)
         if (!recomp::android_should_use_sync_boot_dma()) {
             Rml::Debugger::Initialise(context);
             debugger_initialized = true;
         } else {
             ZELDA_UI_LOG("Rml debugger skipped for Samsung sync boot path");
         }
+#else
+        ZELDA_UI_LOG("Rml debugger skipped");
 #endif
         {
             struct FontFace {

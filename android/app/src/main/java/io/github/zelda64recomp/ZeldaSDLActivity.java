@@ -36,6 +36,7 @@ import android.view.WindowInsetsController;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.libsdl.app.SDLActivity;
@@ -89,6 +90,13 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
     private static final String CLOCK_TEXTURE_PACK_DIR_NAME = "clock_texture_packs";
     private static final String CLOCK_TEXTURE_PACK_FILE_NAME = "clock_texture_pack.o2r";
     private static final String CLOCK_TEXTURE_PACK_DISPLAY_FILE = "clock_texture_pack_display.txt";
+    private static final boolean LITE_BUILD = BuildConfig.ZELDA_LITE_BUILD;
+    private static final boolean SDL_NO_THREAD_PROBE = BuildConfig.ZELDA_SDL_NO_THREAD_PROBE;
+    private static final boolean RT64_SETUP_PROBE = BuildConfig.ZELDA_RT64_SETUP_PROBE;
+    private static final boolean RT64_POST_INIT_PROBE = BuildConfig.ZELDA_RT64_POST_INIT_PROBE;
+    private static final boolean RT64_FIRST_UPDATE_PROBE = BuildConfig.ZELDA_RT64_FIRST_UPDATE_PROBE;
+    private static final boolean RT64_FIRST_DL_PROBE = BuildConfig.ZELDA_RT64_FIRST_DL_PROBE;
+    private static final String RT64_DL_PROBE_STAGE = BuildConfig.ZELDA_RT64_DL_PROBE_STAGE;
     private static final String[] BUNDLED_ANDROID_MODS = {
             "ProxyMM_KV.nrm",
             "ProxyRecomp_KV005.so",
@@ -97,6 +105,17 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             "yazmt_mm_playermodelmanager.nrm",
             "yazmt_mm_playermodelmanager_fsmodels.nrm",
             "yazmt_mm_playermodelmanager_fsmodels_extlib.so"
+    };
+    private static final String[] LITE_BUILD_REMOVED_MODS = {
+            "ProxyMM_KV.nrm",
+            "ProxyRecomp_KV005.so",
+            "yazmt_mm_corelib.nrm",
+            "yazmt_mm_global_objects.nrm",
+            "yazmt_mm_playermodelmanager.nrm",
+            "yazmt_mm_playermodelmanager_fsmodels.nrm",
+            "yazmt_mm_playermodelmanager_fsmodels_extlib.so",
+            ".android_bundled_mods_seeded_v3",
+            "mm_recomp_save_editor-2.nrm"
     };
     private static final String[] OBSOLETE_BUNDLED_MODS = {
             "mm_recomp_save_editor-2.nrm"
@@ -184,7 +203,11 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
             Log.i(TAG, "extracting bundled program assets");
             appendLog("Extracting bundled program assets");
             copyAssetTree("program", programDir);
-            seedBundledAndroidMods(appDataDir);
+            if (LITE_BUILD) {
+                removeLiteBuildBundledMods(appDataDir);
+            } else {
+                seedBundledAndroidMods(appDataDir);
+            }
             Log.i(TAG, "bundled program assets extracted");
             appendLog("Bundled program assets extracted");
         } catch (IOException e) {
@@ -205,6 +228,11 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         lockLandscape();
         applyImmersiveFullscreen();
         requestHighRefreshRate();
+        if (SDL_NO_THREAD_PROBE) {
+            showNoThreadProbeOverlay();
+            appendLog("SDL no-thread probe overlay shown");
+            return;
+        }
         setupControllerOverlay();
         attachTouchController();
 
@@ -216,7 +244,13 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         Log.i(TAG, "APP_ANDROID_MANUFACTURER=" + Build.MANUFACTURER);
         Log.i(TAG, "APP_ANDROID_MODEL=" + Build.MODEL);
         Log.i(TAG, "APP_ANDROID_SDK=" + Build.VERSION.SDK_INT);
-        Log.i(TAG, "APP_SAFE_MODE=" + safeModeEnabled);
+        Log.i(TAG, "APP_LITE_BUILD=" + LITE_BUILD);
+        Log.i(TAG, "APP_RT64_SETUP_PROBE=" + RT64_SETUP_PROBE);
+        Log.i(TAG, "APP_RT64_POST_INIT_PROBE=" + RT64_POST_INIT_PROBE);
+        Log.i(TAG, "APP_RT64_FIRST_UPDATE_PROBE=" + RT64_FIRST_UPDATE_PROBE);
+        Log.i(TAG, "APP_RT64_FIRST_DL_PROBE=" + RT64_FIRST_DL_PROBE);
+        Log.i(TAG, "APP_RT64_DL_PROBE_STAGE=" + RT64_DL_PROBE_STAGE);
+        Log.i(TAG, "APP_SAFE_MODE=" + effectiveSafeModeEnabled());
         appendLog("APP_PROGRAM_PATH=" + programDir.getAbsolutePath());
         appendLog("APP_FOLDER_PATH=" + appDataDir.getAbsolutePath());
         appendLog("APP_NATIVE_LIBS_PATH=" + nativeModLibDir.getAbsolutePath());
@@ -225,11 +259,33 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         appendLog("APP_ANDROID_MANUFACTURER=" + Build.MANUFACTURER);
         appendLog("APP_ANDROID_MODEL=" + Build.MODEL);
         appendLog("APP_ANDROID_SDK=" + Build.VERSION.SDK_INT);
-        appendLog("APP_SAFE_MODE=" + safeModeEnabled);
+        appendLog("APP_LITE_BUILD=" + LITE_BUILD);
+        appendLog("APP_RT64_SETUP_PROBE=" + RT64_SETUP_PROBE);
+        appendLog("APP_RT64_POST_INIT_PROBE=" + RT64_POST_INIT_PROBE);
+        appendLog("APP_RT64_FIRST_UPDATE_PROBE=" + RT64_FIRST_UPDATE_PROBE);
+        appendLog("APP_RT64_FIRST_DL_PROBE=" + RT64_FIRST_DL_PROBE);
+        appendLog("APP_RT64_DL_PROBE_STAGE=" + RT64_DL_PROBE_STAGE);
+        appendLog("APP_SAFE_MODE=" + effectiveSafeModeEnabled());
 
         if (!usingPublicDataDir) {
             requestPublicStorageAccess();
         }
+    }
+
+    private void showNoThreadProbeOverlay() {
+        TextView label = new TextView(this);
+        label.setText("SDLActivity no-thread probe alive");
+        label.setTextColor(0xFFFFFFFF);
+        label.setTextSize(24.0f);
+        label.setGravity(android.view.Gravity.CENTER);
+        label.setBackgroundColor(0xCC221438);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = android.view.Gravity.CENTER;
+        params.leftMargin = 48;
+        params.rightMargin = 48;
+        addContentView(label, params);
     }
 
     @Override
@@ -1002,10 +1058,20 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         nativeSetenv("APP_ANDROID_MANUFACTURER", Build.MANUFACTURER);
         nativeSetenv("APP_ANDROID_MODEL", Build.MODEL);
         nativeSetenv("APP_ANDROID_SDK", Integer.toString(Build.VERSION.SDK_INT));
-        nativeSetenv("APP_SAFE_MODE", safeModeEnabled ? "1" : "0");
+        nativeSetenv("APP_LITE_BUILD", LITE_BUILD ? "1" : "0");
+        nativeSetenv("APP_RT64_SETUP_PROBE", RT64_SETUP_PROBE ? "1" : "0");
+        nativeSetenv("APP_RT64_POST_INIT_PROBE", RT64_POST_INIT_PROBE ? "1" : "0");
+        nativeSetenv("APP_RT64_FIRST_UPDATE_PROBE", RT64_FIRST_UPDATE_PROBE ? "1" : "0");
+        nativeSetenv("APP_RT64_FIRST_DL_PROBE", RT64_FIRST_DL_PROBE ? "1" : "0");
+        nativeSetenv("APP_RT64_DL_PROBE_STAGE", RT64_DL_PROBE_STAGE);
+        nativeSetenv("APP_SAFE_MODE", effectiveSafeModeEnabled() ? "1" : "0");
         applyCustomDriverEnvironment();
         applyClockTexturePackEnvironment();
         appendLog("Native startup environment configured");
+    }
+
+    private boolean effectiveSafeModeEnabled() {
+        return safeModeEnabled || LITE_BUILD;
     }
 
     private void appendLog(String message) {
@@ -1327,6 +1393,28 @@ public class ZeldaSDLActivity extends SDLActivity implements SensorEventListener
         if (!seededMarker.exists() && !seededMarker.createNewFile()) {
             Log.w(TAG, "Failed to create bundled mods seeded marker: " + seededMarker);
         }
+    }
+
+    private void removeLiteBuildBundledMods(File dataDir) {
+        File modsDir = new File(dataDir, "mods");
+        if (!modsDir.exists()) {
+            appendLog("Lite build: bundled Android mods absent");
+            return;
+        }
+
+        for (String filename : LITE_BUILD_REMOVED_MODS) {
+            File oldFile = new File(modsDir, filename);
+            if (oldFile.exists()) {
+                if (oldFile.delete()) {
+                    appendLog("Lite build removed bundled Android mod: " + filename);
+                } else {
+                    Log.w(TAG, "Failed to remove Lite bundled mod: " + oldFile);
+                    appendLog("Failed to remove Lite bundled mod: " + filename);
+                }
+            }
+        }
+
+        appendLog("Lite build: bundled Android mod seeding skipped");
     }
 
     private boolean assetMatchesFile(String assetPath, File file) {

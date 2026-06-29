@@ -26,6 +26,19 @@ static bool is_mod_enabled_or_auto(const std::string &mod_id) {
     return recomp::mods::is_mod_enabled(mod_id) || recomp::mods::is_mod_auto_enabled(mod_id);
 }
 
+static bool is_builtin_replacement_mod_blocked(const std::string &mod_id) {
+#if defined(__APPLE__)
+    return mod_id == "mm_recomp_save_editor";
+#else
+    (void)mod_id;
+    return false;
+#endif
+}
+
+static bool is_mod_enabled_for_display(const std::string &mod_id) {
+    return !is_builtin_replacement_mod_blocked(mod_id) && is_mod_enabled_or_auto(mod_id);
+}
+
 // ModEntryView
 #define COL_TEXT_DEFAULT 242, 242, 242
 #define COL_TEXT_DIM 204, 204, 204
@@ -290,11 +303,17 @@ void ModMenu::open_install_dialog() {
 
 void ModMenu::mod_toggled(bool enabled) {
     if (active_mod_index >= 0) {
-        recomp::mods::enable_mod(mod_details[active_mod_index].mod_id, enabled);
+        const std::string& mod_id = mod_details[active_mod_index].mod_id;
+        if (is_builtin_replacement_mod_blocked(mod_id)) {
+            recomp::mods::enable_mod(mod_id, false);
+        }
+        else {
+            recomp::mods::enable_mod(mod_id, enabled);
+        }
         
         // Refresh enabled status for all mods in case one of them got auto-enabled due to being a dependency.
         for (size_t i = 0; i < mod_entry_buttons.size(); i++) {
-            mod_entry_buttons[i]->set_mod_enabled(is_mod_enabled_or_auto(mod_details[i].mod_id));
+            mod_entry_buttons[i]->set_mod_enabled(is_mod_enabled_for_display(mod_details[i].mod_id));
         }
     }
 }
@@ -307,11 +326,13 @@ void ModMenu::mod_selected(uint32_t mod_index) {
     active_mod_index = mod_index;
 
     if (active_mod_index >= 0) {
-        std::string thumbnail_src = generate_thumbnail_src_for_mod(mod_details[mod_index].mod_id);
+        const std::string& mod_id = mod_details[mod_index].mod_id;
+        std::string thumbnail_src = generate_thumbnail_src_for_mod(mod_id);
         const recomp::mods::ConfigSchema &config_schema = recomp::mods::get_mod_config_schema(mod_details[active_mod_index].mod_id);
-        bool toggle_checked = is_mod_enabled_or_auto(mod_details[mod_index].mod_id);
-        bool auto_enabled = recomp::mods::is_mod_auto_enabled(mod_details[mod_index].mod_id);
-        bool toggle_enabled = !auto_enabled && (mod_details[mod_index].runtime_toggleable || !ultramodern::is_game_started());
+        bool blocked_mod = is_builtin_replacement_mod_blocked(mod_id);
+        bool toggle_checked = !blocked_mod && is_mod_enabled_or_auto(mod_id);
+        bool auto_enabled = recomp::mods::is_mod_auto_enabled(mod_id);
+        bool toggle_enabled = !blocked_mod && !auto_enabled && (mod_details[mod_index].runtime_toggleable || !ultramodern::is_game_started());
         bool configure_enabled = !config_schema.options.empty();
         mod_details_panel->set_mod_details(mod_details[mod_index], thumbnail_src, toggle_checked, toggle_enabled, auto_enabled, configure_enabled);
         mod_entry_buttons[active_mod_index]->set_selected(true);
@@ -368,7 +389,7 @@ void ModMenu::mod_dragged(uint32_t mod_index, EventDrag drag) {
         mod_entry_floating_view->set_display(Display::Flex);
         mod_entry_floating_view->set_mod_details(mod_details[mod_index]);
         mod_entry_floating_view->set_mod_thumbnail(generate_thumbnail_src_for_mod(mod_details[mod_index].mod_id));
-        mod_entry_floating_view->set_mod_enabled(is_mod_enabled_or_auto(mod_details[mod_index].mod_id));
+        mod_entry_floating_view->set_mod_enabled(is_mod_enabled_for_display(mod_details[mod_index].mod_id));
         mod_entry_floating_view->set_left(left, Unit::Px);
         mod_entry_floating_view->set_top(top, Unit::Px);
         mod_entry_floating_view->set_width(width, Unit::Px);
@@ -427,7 +448,7 @@ void ModMenu::mod_dragged(uint32_t mod_index, EventDrag drag) {
         for (size_t i = 0; i < mod_entry_buttons.size(); i++) {
             mod_entry_buttons[i]->set_mod_details(mod_details[i]);
             mod_entry_buttons[i]->set_mod_thumbnail(generate_thumbnail_src_for_mod(mod_details[i].mod_id));
-            mod_entry_buttons[i]->set_mod_enabled(is_mod_enabled_or_auto(mod_details[i].mod_id));
+            mod_entry_buttons[i]->set_mod_enabled(is_mod_enabled_for_display(mod_details[i].mod_id));
         }
 
         mod_entry_buttons[mod_drag_target_index]->set_selected(true);
@@ -576,7 +597,7 @@ void ModMenu::create_mod_list() {
         mod_entry->set_mod_drag_callback([this](uint32_t mod_index, recompui::EventDrag drag){ mod_dragged(mod_index, drag); });
         mod_entry->set_mod_details(mod_details[mod_index]);
         mod_entry->set_mod_thumbnail(thumbnail_name);
-        mod_entry->set_mod_enabled(is_mod_enabled_or_auto(mod_details[mod_index].mod_id));
+        mod_entry->set_mod_enabled(is_mod_enabled_for_display(mod_details[mod_index].mod_id));
         mod_entry_buttons.emplace_back(mod_entry);
     }
 
@@ -620,8 +641,9 @@ void ModMenu::process_event(const Event &e) {
             refresh_button->set_enabled(false);
         }
         if (active_mod_index != -1) {        
-            bool auto_enabled = recomp::mods::is_mod_auto_enabled(mod_details[active_mod_index].mod_id);
-            bool toggle_enabled = !auto_enabled && (mod_details[active_mod_index].runtime_toggleable || !ultramodern::is_game_started());
+            const std::string& mod_id = mod_details[active_mod_index].mod_id;
+            bool auto_enabled = recomp::mods::is_mod_auto_enabled(mod_id);
+            bool toggle_enabled = !is_builtin_replacement_mod_blocked(mod_id) && !auto_enabled && (mod_details[active_mod_index].runtime_toggleable || !ultramodern::is_game_started());
             if (!toggle_enabled) {
                 mod_details_panel->disable_toggle();
             }

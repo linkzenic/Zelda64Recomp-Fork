@@ -16,6 +16,7 @@
 #if defined(__ANDROID__)
 #include <android/log.h>
 #include <signal.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 #include "../android/android_logging.h"
 #define ZELDA_ANDROID_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaNative", __VA_ARGS__)
@@ -84,6 +85,16 @@
 const std::string version_string = "1.2.2";
 
 #if defined(__ANDROID__)
+static bool android_property_equals(const char* name, const char* expected) {
+    char value[PROP_VALUE_MAX] = {};
+    return __system_property_get(name, value) > 0 && std::strcmp(value, expected) == 0;
+}
+
+static bool android_emulator_enabled() {
+    return android_property_equals("ro.kernel.qemu", "1") ||
+        android_property_equals("ro.boot.qemu", "1");
+}
+
 static bool android_safe_mode_enabled() {
     const char* safe_mode = std::getenv("APP_SAFE_MODE");
     return safe_mode != nullptr && safe_mode[0] == '1';
@@ -106,8 +117,9 @@ static bool android_string_equals_ci(const char* value, const char* expected) {
 
     return *value == '\0' && *expected == '\0';
 }
+#endif
 
-static void android_disable_obsolete_mods() {
+static void disable_obsolete_mods() {
     static constexpr const char* save_editor_mod_id = "mm_recomp_save_editor";
     const std::filesystem::path mods_config_path = zelda64::get_app_folder_path() / "mods.json";
 
@@ -162,9 +174,10 @@ static void android_disable_obsolete_mods() {
         return;
     }
 
-    ZELDA_ANDROID_LOG("disabled obsolete Android mod: %s", save_editor_mod_id);
+    ZELDA_ANDROID_LOG("disabled obsolete mod: %s", save_editor_mod_id);
 }
 
+#if defined(__ANDROID__)
 static void android_configure_device_flags() {
     const char* manufacturer = SDL_getenv("APP_ANDROID_MANUFACTURER");
     if (manufacturer == nullptr) {
@@ -333,6 +346,9 @@ bool SetImageAsIcon(const char* filename, SDL_Window* window)
 #endif
 
 SDL_Window* window;
+#if defined(__APPLE__)
+SDL_MetalView metal_view = nullptr;
+#endif
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
     ZELDA_ANDROID_LOG("create_window begin");
@@ -373,8 +389,8 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
     SDL_GetWindowWMInfo(window, &wmInfo);
-    SDL_MetalView view = SDL_Metal_CreateView(window);
-    return ultramodern::renderer::WindowHandle{ wmInfo.info.cocoa.window,  SDL_Metal_GetLayer(view) };
+    metal_view = SDL_Metal_CreateView(window);
+    return ultramodern::renderer::WindowHandle{ wmInfo.info.cocoa.window,  SDL_Metal_GetLayer(metal_view) };
 #else
     static_assert(false && "Unimplemented");
 #endif
@@ -869,6 +885,13 @@ int main(int argc, char** argv) {
     // Force wasapi on Windows, as there seems to be some issue with sample queueing with directsound currently.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
 #endif
+#if defined(__ANDROID__)
+    if (android_emulator_enabled()) {
+        SDL_setenv("SDL_AUDIODRIVER", "dummy", true);
+        ZELDA_ANDROID_LOG("Android emulator detected; using dummy SDL audio driver");
+        zelda64::android::append_log("Android emulator detected; using dummy SDL audio driver");
+    }
+#endif
 
 #if defined(__linux__) && defined(RECOMP_FLATPAK)
     // When using Flatpak, applications tend to launch from the home directory by default.
@@ -897,8 +920,10 @@ int main(int argc, char** argv) {
     recomp::register_config_path(zelda64::get_app_folder_path());
     ZELDA_ANDROID_STAGE("registered config path");
     ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
+#if defined(__ANDROID__) || defined(__APPLE__)
+    disable_obsolete_mods();
+#endif
 #if defined(__ANDROID__)
-    android_disable_obsolete_mods();
     android_configure_device_flags();
 #endif
 
@@ -917,9 +942,13 @@ int main(int argc, char** argv) {
 #endif
 
 #if !defined(ZELDA_ANDROID_RUNTIME_APK)
+#if defined(__APPLE__) && !defined(__ANDROID__)
+    recomp::mods::ignore_external_mod("mm_recomp_dpad_builtin");
+#else
     recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
 #endif
-#if !defined(__ANDROID__)
+#endif
+#if !defined(__ANDROID__) && !defined(__APPLE__)
     recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
 #elif defined(__ANDROID__)
     if (android_safe_mode_enabled()) {
@@ -1058,8 +1087,28 @@ int main(int argc, char** argv) {
     _exit(EXIT_SUCCESS);
 #endif
 
+#if defined(__APPLE__)
+    // RT64's Metal worker threads can trip Objective-C autorelease cleanup while
+    // unwinding during shutdown. Once the recomp runtime has returned, treat that
+    // as an intentional app exit and skip process teardown that macOS reports as
+    // a crash.
+    std::fflush(nullptr);
+    std::_Exit(EXIT_SUCCESS);
+#endif
+
 #if !defined(__ANDROID__)
     NFD_Quit();
+#if defined(__APPLE__)
+    if (metal_view != nullptr) {
+        SDL_Metal_DestroyView(metal_view);
+        metal_view = nullptr;
+    }
+#endif
+    if (window != nullptr) {
+        SDL_DestroyWindow(window);
+        window = nullptr;
+    }
+    SDL_Quit();
 #endif
 
     if (preloaded) {

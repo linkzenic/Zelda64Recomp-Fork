@@ -18,11 +18,11 @@
 		</style>
 	</head>
 	<body>
-		<div id="window" data-model="launcher_model">
-			<div class="launcher">
-				<div class="launcher__vertical-split launcher__vertical-split--right">
-					<div class="launcher__title-quadrant launcher__title-quadrant--right">
-						<button class="subtitle-title subtitle-title--right" selected>
+			<div id="window" data-model="launcher_model">
+				<div class="launcher">
+					<div class="launcher__vertical-split launcher__vertical-split--right">
+						<div class="launcher__title-quadrant launcher__title-quadrant--right">
+							<button class="subtitle-title subtitle-title--right" selected>
 							<div><h3>Zelda 64: Recompiled</h3></div>
 							<div><h1>Majora's Mask</h1></div>
 						</button>
@@ -38,7 +38,7 @@
 						</button>
 						<button data-if="mm_rom_valid" onclick="start_safe_mode" class="menu-list-item menu-list-item--right">
 							<div class="menu-list-item__bullet">•</div>
-							<div class="menu-list-item__label">Safe mode</div>
+							<div class="menu-list-item__label">N64 Mode</div>
 						</button>
 						<button onclick="open_settings" class="menu-list-item menu-list-item--right">
 							<div class="menu-list-item__bullet">•</div>

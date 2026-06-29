@@ -3,9 +3,11 @@
 #include <variant>
 #include <algorithm>
 #include <cstdlib>
+#include <atomic>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
+#include <sys/system_properties.h>
 #define ZELDA_ANDROID_RT64_LOG(...) __android_log_print(ANDROID_LOG_INFO, "ZeldaRT64", __VA_ARGS__)
 #else
 #define ZELDA_ANDROID_RT64_LOG(...)
@@ -29,6 +31,27 @@ static bool high_precision_fb_enabled = false;
 
 static uint8_t DMEM[0x1000];
 static uint8_t IMEM[0x1000];
+
+#if defined(__ANDROID__)
+static std::atomic<uint32_t> android_send_dl_count{0};
+static std::atomic<uint32_t> android_update_screen_count{0};
+
+static bool android_should_log_frame_counter(uint32_t count) {
+    return count <= 10 || count % 120 == 0;
+}
+#endif
+
+#if defined(__ANDROID__)
+static bool android_property_equals(const char* name, const char* expected) {
+    char value[PROP_VALUE_MAX] = {};
+    return __system_property_get(name, value) > 0 && std::strcmp(value, expected) == 0;
+}
+
+static bool android_emulator_enabled() {
+    return android_property_equals("ro.kernel.qemu", "1") ||
+        android_property_equals("ro.boot.qemu", "1");
+}
+#endif
 
 struct TexturePackEnableAction {
     std::string mod_id;
@@ -182,6 +205,21 @@ void set_application_user_config(RT64::Application* application, const ultramode
     application->userConfig.refreshRateTarget = config.rr_manual_value;
     application->userConfig.internalColorFormat = to_rt64(config.hpfb_option);
     application->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Triple;
+#if defined(__ANDROID__)
+    if (android_emulator_enabled()) {
+        application->userConfig.resolution = RT64::UserConfiguration::Resolution::Original;
+        application->userConfig.resolutionMultiplier = 1.0;
+        application->userConfig.aspectRatio = RT64::UserConfiguration::AspectRatio::Original;
+        application->userConfig.extAspectRatio = RT64::UserConfiguration::AspectRatio::Original;
+        application->userConfig.refreshRate = RT64::UserConfiguration::RefreshRate::Original;
+        application->userConfig.antialiasing = RT64::UserConfiguration::Antialiasing::None;
+        application->userConfig.internalColorFormat = RT64::UserConfiguration::InternalColorFormat::Standard;
+        application->userConfig.hardwareResolve = RT64::UserConfiguration::HardwareResolve::Disabled;
+        application->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Double;
+        application->userConfig.downsampleMultiplier = 1;
+        ZELDA_ANDROID_RT64_LOG("Android emulator detected; using low-risk native-resolution RT64 config");
+    }
+#endif
 }
 
 ultramodern::renderer::SetupResult map_setup_result(RT64::Application::SetupResult rt64_result) {
@@ -326,7 +364,6 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
         app = nullptr;
         return;
     }
-
     // Set the application's fullscreen state.
     ZELDA_ANDROID_RT64_LOG("setting fullscreen");
     app->setFullScreen(cur_config.wm_option == ultramodern::renderer::WindowMode::Fullscreen);
@@ -352,13 +389,60 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
 zelda64::renderer::RT64Context::~RT64Context() = default;
 
 void zelda64::renderer::RT64Context::send_dl(const OSTask* task) {
+#if defined(__ANDROID__)
+    const uint32_t count = android_send_dl_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    const bool log_this_dl = android_should_log_frame_counter(count);
+    if (log_this_dl) {
+        ZELDA_ANDROID_RT64_LOG("send_dl #%u task=%p ucode=0x%08X ucode_data=0x%08X data=0x%08X type=%u flags=0x%08X",
+            count,
+            static_cast<const void*>(task),
+            task != nullptr ? task->t.ucode : 0,
+            task != nullptr ? task->t.ucode_data : 0,
+            task != nullptr ? task->t.data_ptr : 0,
+            task != nullptr ? task->t.type : 0,
+            task != nullptr ? task->t.flags : 0);
+    }
+#endif
     check_texture_pack_actions();
+#if defined(__ANDROID__)
+    if (log_this_dl) {
+        ZELDA_ANDROID_RT64_LOG("send_dl #%u after texture actions", count);
+    }
+#endif
     app->state->rsp->reset();
+#if defined(__ANDROID__)
+    if (log_this_dl) {
+        ZELDA_ANDROID_RT64_LOG("send_dl #%u after rsp reset", count);
+    }
+#endif
     app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
+#if defined(__ANDROID__)
+    if (log_this_dl) {
+        ZELDA_ANDROID_RT64_LOG("send_dl #%u after loadUCodeGBI", count);
+    }
+#endif
     app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
+#if defined(__ANDROID__)
+    if (log_this_dl) {
+        ZELDA_ANDROID_RT64_LOG("send_dl #%u after processDisplayLists", count);
+    }
+#endif
 }
 
 void zelda64::renderer::RT64Context::update_screen() {
+#if defined(__ANDROID__)
+    const uint32_t count = android_update_screen_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (android_should_log_frame_counter(count)) {
+        const ultramodern::renderer::ViRegs* vi_regs = ultramodern::renderer::get_vi_regs();
+        ZELDA_ANDROID_RT64_LOG("update_screen #%u vi_status=0x%08X origin=0x%08X width=%u x_scale=0x%08X y_scale=0x%08X",
+            count,
+            vi_regs != nullptr ? vi_regs->VI_STATUS_REG : 0,
+            vi_regs != nullptr ? vi_regs->VI_ORIGIN_REG : 0,
+            vi_regs != nullptr ? vi_regs->VI_WIDTH_REG : 0,
+            vi_regs != nullptr ? vi_regs->VI_X_SCALE_REG : 0,
+            vi_regs != nullptr ? vi_regs->VI_Y_SCALE_REG : 0);
+    }
+#endif
     app->updateScreen();
 }
 

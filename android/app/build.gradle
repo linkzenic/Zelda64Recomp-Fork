@@ -11,9 +11,19 @@ final String hostFileToC = System.getenv('ZELDA_ANDROID_FILE_TO_C') ?: "${System
 final String patchesCCompiler = System.getenv('PATCHES_C_COMPILER') ?: '/opt/homebrew/opt/llvm/bin/clang'
 final String patchesLd = System.getenv('PATCHES_LD') ?: '/opt/homebrew/bin/ld.lld'
 final boolean zeldaVulkanProbe = (project.findProperty('zeldaVulkanProbe') ?: 'false').toString().toBoolean()
-final boolean zeldaProbe = zeldaVulkanProbe ? false : (project.findProperty('zeldaProbe') ?: 'true').toString().toBoolean()
+final boolean zeldaJavaProbe = (project.findProperty('zeldaJavaProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaNoopSdlProbe = (project.findProperty('zeldaNoopSdlProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaSdlNoThreadProbe = (project.findProperty('zeldaSdlNoThreadProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaRt64SetupProbe = (project.findProperty('zeldaRt64SetupProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaRt64PostInitProbe = (project.findProperty('zeldaRt64PostInitProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaRt64FirstUpdateProbe = (project.findProperty('zeldaRt64FirstUpdateProbe') ?: 'false').toString().toBoolean()
+final boolean zeldaRt64FirstDlProbe = (project.findProperty('zeldaRt64FirstDlProbe') ?: 'false').toString().toBoolean()
+final String zeldaRt64DlProbeStage = (project.findProperty('zeldaRt64DlProbeStage') ?: '0').toString()
+final boolean zeldaRt64DlStageProbe = zeldaRt64DlProbeStage != '0'
+final boolean zeldaProbe = (zeldaVulkanProbe || zeldaJavaProbe || zeldaNoopSdlProbe || zeldaSdlNoThreadProbe || zeldaRt64SetupProbe || zeldaRt64PostInitProbe || zeldaRt64FirstUpdateProbe || zeldaRt64FirstDlProbe || zeldaRt64DlStageProbe) ? false : (project.findProperty('zeldaProbe') ?: 'true').toString().toBoolean()
 final boolean zeldaRuntimeApk = !zeldaProbe && !zeldaVulkanProbe
 final boolean zeldaNativeOptimized = (project.findProperty('zeldaNativeOptimized') ?: (zeldaRuntimeApk ? 'true' : 'false')).toString().toBoolean()
+final boolean zeldaLiteBuild = (project.findProperty('zeldaLiteBuild') ?: 'false').toString().toBoolean()
 final String zeldaApplicationId = (project.findProperty('zeldaApplicationId') ?: 'io.github.zelda64recomp').toString()
 final String androidKeystorePath = (project.findProperty('ANDROID_KEYSTORE_PATH') ?: System.getenv('ANDROID_KEYSTORE_PATH') ?: '').toString()
 final String androidKeystorePassword = (project.findProperty('ANDROID_KEYSTORE_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: '').toString()
@@ -32,8 +42,19 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 36
-        versionCode 59
-        versionName zeldaVulkanProbe ? '0.5.9-android-vulkan-probe' : (zeldaProbe ? '0.5.9-android-sdl-probe' : '0.5.9')
+        versionCode 62
+        versionName zeldaJavaProbe ? '0.6.2-android-java-probe' : (zeldaSdlNoThreadProbe ? '0.6.2-android-sdl-no-thread-probe' : (zeldaNoopSdlProbe ? '0.6.2-android-sdl-noop-probe' : (zeldaVulkanProbe ? '0.6.2-android-vulkan-probe' : (zeldaRt64SetupProbe ? '0.6.2-rt64-setup-probe' : (zeldaRt64PostInitProbe ? '0.6.2-rt64-post-init-probe' : (zeldaRt64FirstUpdateProbe ? '0.6.2-rt64-first-update-probe' : (zeldaRt64FirstDlProbe ? '0.6.2-rt64-first-dl-probe' : (zeldaRt64DlStageProbe ? "0.6.2-rt64-dl-stage-${zeldaRt64DlProbeStage}-probe" : (zeldaProbe ? '0.6.2-android-sdl-probe' : (zeldaLiteBuild ? '0.6.2-lite' : '0.6.2'))))))))))
+        manifestPlaceholders = [
+            zeldaActivityName: zeldaJavaProbe ? 'io.github.zelda64recomp.JavaProbeActivity' : 'io.github.zelda64recomp.ZeldaSDLActivity'
+        ]
+        buildConfigField 'boolean', 'ZELDA_LITE_BUILD', zeldaLiteBuild ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_JAVA_PROBE', zeldaJavaProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_SDL_NO_THREAD_PROBE', zeldaSdlNoThreadProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_RT64_SETUP_PROBE', zeldaRt64SetupProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_RT64_POST_INIT_PROBE', zeldaRt64PostInitProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_RT64_FIRST_UPDATE_PROBE', zeldaRt64FirstUpdateProbe ? 'true' : 'false'
+        buildConfigField 'boolean', 'ZELDA_RT64_FIRST_DL_PROBE', zeldaRt64FirstDlProbe ? 'true' : 'false'
+        buildConfigField 'String', 'ZELDA_RT64_DL_PROBE_STAGE', "\"${zeldaRt64DlProbeStage}\""
 
         externalNativeBuild {
             cmake {
@@ -53,8 +74,10 @@ android {
                     "-DPATCHES_LD=${patchesLd}", \
                     "-DZELDA_ANDROID_SHELL_ONLY=${zeldaProbe ? 'ON' : 'OFF'}", \
                     "-DZELDA_ANDROID_SDL_LIFECYCLE_PROBE=${zeldaProbe ? 'ON' : 'OFF'}", \
+                    "-DZELDA_ANDROID_SDL_NOOP_PROBE=${zeldaNoopSdlProbe ? 'ON' : 'OFF'}", \
                     "-DZELDA_ANDROID_VULKAN_SMOKE_PROBE=${zeldaVulkanProbe ? 'ON' : 'OFF'}", \
-                    "-DZELDA_ANDROID_RUNTIME_APK=${zeldaRuntimeApk ? 'ON' : 'OFF'}"
+                    "-DZELDA_ANDROID_RUNTIME_APK=${zeldaRuntimeApk ? 'ON' : 'OFF'}", \
+                    "-DZELDA_ANDROID_LITE_BUILD=${zeldaLiteBuild ? 'ON' : 'OFF'}"
                 if (zeldaNativeOptimized) {
                     cFlags '-O2', '-g', '-DNDEBUG'
                     cppFlags '-O2', '-g', '-DNDEBUG'
@@ -74,6 +97,10 @@ android {
                 keyPassword androidKeyPassword
             }
         }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -192,7 +219,6 @@ if (zeldaRuntimeApk) {
 
     tasks.register('copyProgramAssets', Copy) {
         dependsOn tasks.named('validateAndroidBuildEnvironment')
-        dependsOn tasks.named('validateAndroidBundledNativeMods')
         doFirst {
             delete generatedProgramAssetsDir
         }
@@ -202,8 +228,11 @@ if (zeldaRuntimeApk) {
         from('../../recompcontrollerdb.txt') {
             into('program')
         }
-        from(bundledModsAssetsDir) {
-            into('bundled_mods')
+        if (!zeldaLiteBuild) {
+            dependsOn tasks.named('validateAndroidBundledNativeMods')
+            from(bundledModsAssetsDir) {
+                into('bundled_mods')
+            }
         }
         into(generatedProgramAssetsDir)
     }
