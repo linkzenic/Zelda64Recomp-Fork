@@ -42,8 +42,8 @@ android {
         applicationId zeldaApplicationId
         minSdk 24
         targetSdk 36
-        versionCode 63
-        versionName zeldaJavaProbe ? '0.6.3-android-java-probe' : (zeldaSdlNoThreadProbe ? '0.6.3-android-sdl-no-thread-probe' : (zeldaNoopSdlProbe ? '0.6.3-android-sdl-noop-probe' : (zeldaVulkanProbe ? '0.6.3-android-vulkan-probe' : (zeldaRt64SetupProbe ? '0.6.3-rt64-setup-probe' : (zeldaRt64PostInitProbe ? '0.6.3-rt64-post-init-probe' : (zeldaRt64FirstUpdateProbe ? '0.6.3-rt64-first-update-probe' : (zeldaRt64FirstDlProbe ? '0.6.3-rt64-first-dl-probe' : (zeldaRt64DlStageProbe ? "0.6.3-rt64-dl-stage-${zeldaRt64DlProbeStage}-probe" : (zeldaProbe ? '0.6.3-android-sdl-probe' : (zeldaLiteBuild ? '0.6.3-lite' : '0.6.3'))))))))))
+        versionCode 64
+        versionName zeldaJavaProbe ? '0.6.4-android-java-probe' : (zeldaSdlNoThreadProbe ? '0.6.4-android-sdl-no-thread-probe' : (zeldaNoopSdlProbe ? '0.6.4-android-sdl-noop-probe' : (zeldaVulkanProbe ? '0.6.4-android-vulkan-probe' : (zeldaRt64SetupProbe ? '0.6.4-rt64-setup-probe' : (zeldaRt64PostInitProbe ? '0.6.4-rt64-post-init-probe' : (zeldaRt64FirstUpdateProbe ? '0.6.4-rt64-first-update-probe' : (zeldaRt64FirstDlProbe ? '0.6.4-rt64-first-dl-probe' : (zeldaRt64DlStageProbe ? "0.6.4-rt64-dl-stage-${zeldaRt64DlProbeStage}-probe" : (zeldaProbe ? '0.6.4-android-sdl-probe' : (zeldaLiteBuild ? '0.6.4-lite' : '0.6.4'))))))))))
         manifestPlaceholders = [
             zeldaActivityName: zeldaJavaProbe ? 'io.github.zelda64recomp.JavaProbeActivity' : 'io.github.zelda64recomp.ZeldaSDLActivity'
         ]

@@ -8,6 +8,9 @@
 void Main_ClearMemory(void* begin, void* end);
 void Main_InitMemory(void);
 void Main_InitScreen(void);
+void Fault_AddHungupAndCrash(const char* file, s32 line);
+
+extern u16 sNumDmaEntries;
 
 
 RECOMP_DECLARE_EVENT(recomp_on_init());
@@ -126,6 +129,68 @@ static void AndroidDiag_LoadOverlayToRam(uintptr_t vromStart, void* dst, size_t 
     if (yaz0Status != 0) {
         recomp_load_overlays(vromStart, dst, size);
         recomp_measure_latency(97, 0x77, (u32)yaz0Status, (u32)vromStart, (u32)size);
+    }
+}
+
+// Samsung devices can reach the game entrypoint now, but still fault inside the
+// vanilla DMAMGR thread while Yaz0 data is being decompressed. Keep the normal
+// path everywhere else, and route only Samsung compressed DMA through the
+// host-side Android loader used by the other Samsung-safe asset paths.
+RECOMP_PATCH void DmaMgr_ProcessMsg(DmaRequest* req) {
+    uintptr_t vrom;
+    void* ram;
+    size_t size;
+    uintptr_t romStart;
+    size_t romSize;
+    DmaEntry* dmaEntry;
+    s32 index;
+    s32 yaz0Status;
+    s32 syncBootDma = recomp_android_should_use_sync_boot_dma();
+
+    vrom = req->vromAddr;
+    ram = req->dramAddr;
+    size = req->size;
+
+    index = DmaMgr_FindDmaIndex(vrom);
+
+    if ((index >= 0) && (index < sNumDmaEntries)) {
+        dmaEntry = &dmadata[index];
+        if (dmaEntry->romEnd == 0) {
+            if (dmaEntry->vromEnd < (vrom + size)) {
+                Fault_AddHungupAndCrash("../z_std_dma.c", 499);
+            }
+            DmaMgr_DmaRomToRam((dmaEntry->romStart + vrom) - dmaEntry->vromStart, (u8*)ram, size);
+            return;
+        }
+
+        romSize = dmaEntry->romEnd - dmaEntry->romStart;
+        romStart = dmaEntry->romStart;
+
+        if (vrom != dmaEntry->vromStart) {
+            Fault_AddHungupAndCrash("../z_std_dma.c", 518);
+        }
+
+        if (size != (dmaEntry->vromEnd - dmaEntry->vromStart)) {
+            Fault_AddHungupAndCrash("../z_std_dma.c", 525);
+        }
+
+        osSetThreadPri(NULL, 10);
+        if (syncBootDma) {
+            recomp_measure_latency(97, 0x90, (u32)romStart, (u32)(uintptr_t)ram, (u32)romSize);
+            yaz0Status = recomp_android_load_yaz0(romStart, romSize, ram, size);
+            recomp_measure_latency(97, 0x91, (u32)yaz0Status, (u32)romStart, (u32)(uintptr_t)ram);
+            if (yaz0Status != 0) {
+                recomp_printf("[AndroidLoadDiag] DmaMgr_ProcessMsg host Yaz0 failed status=%d rom=%08llX "
+                              "compressed=%08X expected=%08X\n",
+                              yaz0Status, (u64)romStart, (u32)romSize, (u32)size);
+                Fault_AddHungupAndCrash("../z_std_dma.c", 545);
+            }
+        } else {
+            Yaz0_Decompress(romStart, ram, romSize);
+        }
+        osSetThreadPri(NULL, 17);
+    } else {
+        Fault_AddHungupAndCrash("../z_std_dma.c", 558);
     }
 }
 
