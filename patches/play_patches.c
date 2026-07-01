@@ -33,6 +33,7 @@
 extern Input D_801F6C18;
 extern SceneEntranceTableEntry sSceneEntranceTable[];
 extern ActorInit Player_InitVars;
+extern u16 sNumDmaEntries;
 
 RECOMP_DECLARE_EVENT(recomp_on_play_main(PlayState* play));
 RECOMP_DECLARE_EVENT(recomp_on_play_update(PlayState* play));
@@ -51,7 +52,6 @@ RECOMP_PATCH ActorInit* Actor_LoadOverlay(ActorContext* actorCtx, s16 index) {
     s32 samsungDiag = recomp_android_should_use_sync_boot_dma();
 
     if (samsungDiag && ((index < 0) || (index >= gMaxActorId) || (index >= ACTOR_ID_MAX))) {
-        recomp_measure_latency(98, 0x80, (u32)(s32)index, (u32)gMaxActorId, 0);
         return NULL;
     }
 
@@ -63,10 +63,6 @@ RECOMP_PATCH ActorInit* Actor_LoadOverlay(ActorContext* actorCtx, s16 index) {
             ((uintptr_t)overlayEntry->vramStart >= (uintptr_t)overlayEntry->vramEnd) ||
             (overlaySize == 0) || (overlaySize > 0x200000) ||
             (DmaMgr_FindDmaEntry(overlayEntry->vromStart) == NULL)) {
-            recomp_measure_latency(98, 0x81, (u32)(s32)index, (u32)overlayEntry->vromStart,
-                                   (u32)overlayEntry->vromEnd);
-            recomp_measure_latency(98, 0x82, (u32)(uintptr_t)overlayEntry->vramStart,
-                                   (u32)(uintptr_t)overlayEntry->vramEnd, (u32)overlaySize);
             return NULL;
         }
     }
@@ -379,6 +375,22 @@ static void AndroidDiag_ProcessDma(void* dst, uintptr_t vromStart, size_t size, 
     recomp_measure_latency(97, 10, (u32)entry->romStart, (u32)(uintptr_t)dst, (u32)size);
 }
 
+#include "android_object_file_ids.h"
+
+static bool AndroidDiag_GetObjectFileFromDmaId(s16 id, RomFile* objectFile) {
+    s16 dmaId;
+
+    dmaId = AndroidDiag_GetObjectDmaId(id);
+    if ((dmaId < 0) || (dmaId >= sNumDmaEntries)) {
+        return false;
+    }
+
+    objectFile->vromStart = dmadata[dmaId].vromStart;
+    objectFile->vromEnd = dmadata[dmaId].vromEnd;
+    recomp_measure_latency(98, 0x2A, (u32)(s32)id, (u32)(s32)dmaId, (u32)objectFile->vromStart);
+    return true;
+}
+
 static bool AndroidDiag_GetObjectFile(s16 id, RomFile* objectFile) {
     if (recomp_android_should_use_sync_boot_dma()) {
         switch (id) {
@@ -428,10 +440,16 @@ static bool AndroidDiag_GetObjectFile(s16 id, RomFile* objectFile) {
                 return true;
         }
 
+        if (AndroidDiag_GetObjectFileFromDmaId(id, objectFile)) {
+            return true;
+        }
+
+        objectFile->vromStart = 0;
+        objectFile->vromEnd = 0;
         recomp_measure_latency(98, 2, (u32)(s32)id, (u32)(uintptr_t)gObjectTable,
                                0);
-        recomp_printf("[AndroidLoadDiag] object id %d not in Android boot table; falling back to base gObjectTable\n",
-                      id);
+        recomp_printf("[AndroidLoadDiag] object id %d out of Android object table range\n", id);
+        return false;
     }
 
     *objectFile = gObjectTable[id];
@@ -696,15 +714,42 @@ RECOMP_PATCH void Transition_Init(TransitionContext* transitionCtx) {
     TransitionInit* initInfo[1];
     if (recomp_android_should_use_sync_boot_dma()) {
         recomp_measure_latency(98, 0xA1, (u32)transitionCtx, transitionCtx->transitionType, transitionCtx->fbdemoType);
+        if ((transitionCtx->fbdemoType != -1) && (transitionCtx->fbdemoType != FBDEMO_FADE)) {
+            recomp_measure_latency(98, 0xA3, transitionCtx->transitionType, transitionCtx->fbdemoType, FBDEMO_FADE);
+            transitionCtx->transitionType = TRANS_TYPE_FADE_BLACK;
+            transitionCtx->fbdemoType = FBDEMO_FADE;
+        }
     }
 
     overlayEntry = &gTransitionOverlayTable[transitionCtx->fbdemoType];
-    TransitionOverlay_Load(overlayEntry);
-
-    relocOffset = (uintptr_t)Lib_PhysicalToVirtual(overlayEntry->loadInfo.addr) - (uintptr_t)overlayEntry->vramStart;
     initInfo[0] = NULL;
-    initInfo[0] = (overlayEntry->initInfo != NULL) ? (TransitionInit*)((uintptr_t)overlayEntry->initInfo + relocOffset)
-                                                   : initInfo[0];
+
+    if (recomp_android_should_use_sync_boot_dma() && (transitionCtx->fbdemoType == FBDEMO_FADE)) {
+        recomp_measure_latency(98, 0xA4, (u32)transitionCtx, transitionCtx->transitionType, transitionCtx->fbdemoType);
+        transitionCtx->init = TransitionFade_Init;
+        transitionCtx->destroy = TransitionFade_Destroy;
+        transitionCtx->update = TransitionFade_Update;
+        transitionCtx->draw = TransitionFade_Draw;
+        transitionCtx->start = TransitionFade_Start;
+        transitionCtx->setType = TransitionFade_SetType;
+        transitionCtx->setColor = TransitionFade_SetColor;
+        transitionCtx->setEnvColor = NULL;
+        transitionCtx->isDone = TransitionFade_IsDone;
+        return;
+    }
+
+    if (overlayEntry->vromStart == 0) {
+        initInfo[0] = overlayEntry->initInfo;
+    } else {
+        TransitionOverlay_Load(overlayEntry);
+        relocOffset = (uintptr_t)Lib_PhysicalToVirtual(overlayEntry->loadInfo.addr) - (uintptr_t)overlayEntry->vramStart;
+        initInfo[0] = (overlayEntry->initInfo != NULL) ? (TransitionInit*)((uintptr_t)overlayEntry->initInfo + relocOffset)
+                                                       : initInfo[0];
+    }
+
+    if (initInfo[0] == NULL) {
+        recomp_crash("Transition init info missing");
+    }
 
     transitionCtx->init = initInfo[0]->init;
     transitionCtx->destroy = initInfo[0]->destroy;

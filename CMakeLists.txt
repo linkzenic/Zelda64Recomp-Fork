@@ -184,13 +184,6 @@ target_compile_options(PatchesLib PRIVATE
     -Wno-implicit-function-declaration
 )
 
-if (CMAKE_SYSTEM_NAME MATCHES "Android")
-    # Samsung Android 16 devices can fault when entering generated recomp
-    # functions without a BTI landing pad. Scope this to generated code only.
-    target_compile_options(RecompiledFuncs PRIVATE -mbranch-protection=bti)
-    target_compile_options(PatchesLib PRIVATE -mbranch-protection=bti)
-endif()
-
 target_include_directories(PatchesLib PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/ultramodern/include
@@ -351,6 +344,31 @@ else()
         -fno-strict-aliasing
         -fms-extensions
     )
+endif()
+
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    # Modern Samsung/Google ARM64 devices can enforce BTI for indirect branch
+    # targets. The generated game and runtime cross-call heavily via tables, so
+    # keep Android native targets BTI-compatible instead of only the generated C.
+    foreach(BTI_TARGET IN ITEMS
+        ${ZELDA_RECOMP_TARGET}
+        RecompiledFuncs
+        PatchesLib
+        librecomp
+        ultramodern
+        rt64
+        plume
+        adrenotools
+        linkernsbypass
+        hook_impl
+        main_hook
+        file_redirect_hook
+        gsl_alloc_hook
+    )
+        if (TARGET ${BTI_TARGET})
+            target_compile_options(${BTI_TARGET} PRIVATE -mbranch-protection=bti)
+        endif()
+    endforeach()
 endif()
 
 if (MSVC)

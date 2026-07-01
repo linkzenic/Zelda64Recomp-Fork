@@ -1,7 +1,9 @@
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 #include "recomp.h"
+#include "librecomp/addresses.hpp"
 #include "librecomp/overlays.hpp"
 #include "zelda_config.h"
 #include "zelda_clock_overlay.h"
@@ -18,6 +20,16 @@
 #include "../patches/sound.h"
 #include "ultramodern/ultramodern.hpp"
 #include "ultramodern/config.hpp"
+
+static bool android_n64_mode_enabled() {
+#if defined(__ANDROID__)
+    const char* n64_mode = std::getenv("APP_N64_MODE");
+    const char* safe_mode = std::getenv("APP_SAFE_MODE");
+    return (n64_mode && n64_mode[0] == '1') || (safe_mode && safe_mode[0] == '1');
+#else
+    return false;
+#endif
+}
 
 extern "C" void recomp_update_inputs(uint8_t* rdram, recomp_context* ctx) {
     recomp::poll_inputs();
@@ -113,7 +125,7 @@ extern "C" void recomp_get_autosave_enabled(uint8_t* rdram, recomp_context* ctx)
 }
 
 extern "C" void recomp_get_save_anywhere_enabled(uint8_t* rdram, recomp_context* ctx) {
-    _return(ctx, static_cast<s32>(zelda64::get_save_anywhere_enabled()));
+    _return(ctx, static_cast<s32>(!android_n64_mode_enabled() && zelda64::get_save_anywhere_enabled()));
 }
 
 extern "C" void recomp_save_editor_set_snapshot_value(uint8_t* rdram, recomp_context* ctx) {
@@ -239,7 +251,16 @@ extern "C" void recomp_android_load_yaz0(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
 
+    constexpr uint64_t kRdramBase = 0xFFFFFFFF80000000ULL;
+    constexpr uint64_t kMappedRecompMemSize = recomp::mem_size;
     gpr normalized_dst = normalize_recomp_address(dst);
+    uint64_t dst_offset = static_cast<uint64_t>(normalized_dst) - kRdramBase;
+    if (normalized_dst < kRdramBase || dst_offset > kMappedRecompMemSize ||
+        expected_size > kMappedRecompMemSize - dst_offset) {
+        _return(ctx, -8);
+        return;
+    }
+
     for (u32 i = 0; i < expected_size; i++) {
         MEM_B(i, normalized_dst) = output[i];
     }
@@ -384,7 +405,7 @@ extern "C" void recomp_get_analog_camera_distance(uint8_t* rdram, recomp_context
 }
 
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx) {
-    _return<s32>(ctx, zelda64::get_dpad_items_enabled());
+    _return<s32>(ctx, !android_n64_mode_enabled() && zelda64::get_dpad_items_enabled());
 }
 
 extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx) {
