@@ -174,7 +174,6 @@ RECOMP_PATCH void DmaMgr_ProcessMsg(DmaRequest* req) {
             Fault_AddHungupAndCrash("../z_std_dma.c", 525);
         }
 
-        osSetThreadPri(NULL, 10);
         if (syncBootDma) {
             recomp_measure_latency(97, 0x90, (u32)romStart, (u32)(uintptr_t)ram, (u32)romSize);
             yaz0Status = recomp_android_load_yaz0(romStart, romSize, ram, size);
@@ -188,7 +187,6 @@ RECOMP_PATCH void DmaMgr_ProcessMsg(DmaRequest* req) {
         } else {
             Yaz0_Decompress(romStart, ram, romSize);
         }
-        osSetThreadPri(NULL, 17);
     } else {
         Fault_AddHungupAndCrash("../z_std_dma.c", 558);
     }
