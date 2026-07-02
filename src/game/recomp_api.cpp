@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "recomp.h"
-#include "librecomp/addresses.hpp"
 #include "librecomp/overlays.hpp"
 #include "zelda_config.h"
 #include "zelda_clock_overlay.h"
@@ -251,16 +250,7 @@ extern "C" void recomp_android_load_yaz0(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
 
-    constexpr uint64_t kRdramBase = 0xFFFFFFFF80000000ULL;
-    constexpr uint64_t kMappedRecompMemSize = recomp::mem_size;
     gpr normalized_dst = normalize_recomp_address(dst);
-    uint64_t dst_offset = static_cast<uint64_t>(normalized_dst) - kRdramBase;
-    if (normalized_dst < kRdramBase || dst_offset > kMappedRecompMemSize ||
-        expected_size > kMappedRecompMemSize - dst_offset) {
-        _return(ctx, -8);
-        return;
-    }
-
     for (u32 i = 0; i < expected_size; i++) {
         MEM_B(i, normalized_dst) = output[i];
     }
