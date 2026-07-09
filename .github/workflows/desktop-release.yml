@@ -1,0 +1,255 @@
+name: Build Desktop Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional release tag to publish
+        required: false
+        type: string
+      release_title:
+        description: Optional release title
+        required: false
+        type: string
+      release_notes:
+        description: Optional release notes
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build libsdl2-dev libgtk-3-dev libfreetype-dev libatomic1 zip
+          echo "PATCHES_C_COMPILER=$(command -v clang)" >> "$GITHUB_ENV"
+          echo "PATCHES_LD=$(command -v ld.lld)" >> "$GITHUB_ENV"
+
+      - name: Restore generated sources
+        env:
+          ZELDA_GENERATED_SOURCES_URL: ${{ secrets.ZELDA_GENERATED_SOURCES_URL || secrets.ZELDA_ANDROID_GENERATED_SOURCES_URL }}
+          ZELDA_GENERATED_SOURCES_TOKEN: ${{ secrets.ZELDA_GENERATED_SOURCES_TOKEN || secrets.ZELDA_ANDROID_GENERATED_SOURCES_TOKEN }}
+        run: python3 tools/ci/restore_generated_sources.py
+
+      - name: Prepare generated sources
+        run: tools/ci/prepare_desktop_generated_sources.sh
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DPATCHES_C_COMPILER="$PATCHES_C_COMPILER" \
+            -DPATCHES_LD="$PATCHES_LD"
+          cmake --build build-linux --config Release --target Zelda64Recompiled -j "$(nproc)"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="Zelda64Recompiled-Linux"
+          mkdir -p "$package_dir"
+          cp build-linux/Zelda64Recompiled "$package_dir/"
+          cp recompcontrollerdb.txt "$package_dir/"
+          cp -R assets "$package_dir/assets"
+          rm -rf "$package_dir/assets/scss"
+          tar -czf Zelda64Recompiled-Linux.tar.gz "$package_dir"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zelda64Recompiled-Linux
+          path: Zelda64Recompiled-Linux.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ninja
+          python3 -m pip install --user macholib
+          chmod +x .github/macos/ld64
+
+      - name: Set up MacPorts
+        uses: melusina-org/setup-macports@v1
+        with:
+          parameters: .github/macos/macports.yaml
+
+      - name: Restore generated sources
+        env:
+          ZELDA_GENERATED_SOURCES_URL: ${{ secrets.ZELDA_GENERATED_SOURCES_URL || secrets.ZELDA_ANDROID_GENERATED_SOURCES_URL }}
+          ZELDA_GENERATED_SOURCES_TOKEN: ${{ secrets.ZELDA_GENERATED_SOURCES_TOKEN || secrets.ZELDA_ANDROID_GENERATED_SOURCES_TOKEN }}
+        run: python3 tools/ci/restore_generated_sources.py
+
+      - name: Prepare generated sources
+        shell: bash
+        env:
+          PATCHES_C_COMPILER: /opt/local/bin/clang-mp-18
+          PATCHES_LD: /opt/local/bin/ld.lld-mp-18
+        run: tools/ci/prepare_desktop_generated_sources.sh
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-macos -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+            -DPATCHES_C_COMPILER=/opt/local/bin/clang-mp-18 \
+            -DPATCHES_LD=/opt/local/bin/ld.lld-mp-18 \
+            -DCMAKE_AR=/opt/local/bin/llvm-ar-mp-18
+          cmake --build build-macos --config Release --target Zelda64Recompiled -j "$(sysctl -n hw.ncpu)"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ditto -c -k --sequesterRsrc --keepParent build-macos/Zelda64Recompiled.app Zelda64Recompiled-macOS.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zelda64Recompiled-macOS
+          path: Zelda64Recompiled-macOS.zip
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          choco install ninja make -y
+          Remove-Item -Path "C:\ProgramData\Chocolatey\bin\ccache.exe" -Force -ErrorAction SilentlyContinue
+
+      - name: Download portable LLVM
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.3/LLVM-19.1.3-Windows-X64.tar.xz" -OutFile "LLVM.tar.xz"
+          New-Item -ItemType Directory -Path portable-llvm | Out-Null
+          7z x LLVM.tar.xz
+          7z x LLVM.tar -oportable-llvm
+
+      - name: Configure Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Restore generated sources
+        shell: pwsh
+        env:
+          ZELDA_GENERATED_SOURCES_URL: ${{ secrets.ZELDA_GENERATED_SOURCES_URL || secrets.ZELDA_ANDROID_GENERATED_SOURCES_URL }}
+          ZELDA_GENERATED_SOURCES_TOKEN: ${{ secrets.ZELDA_GENERATED_SOURCES_TOKEN || secrets.ZELDA_ANDROID_GENERATED_SOURCES_TOKEN }}
+        run: python tools/ci/restore_generated_sources.py
+
+      - name: Prepare generated sources
+        shell: bash
+        env:
+          PATCHES_C_COMPILER: ${{ github.workspace }}/portable-llvm/LLVM-19.1.3-Windows-X64/bin/clang.exe
+          PATCHES_LD: ${{ github.workspace }}/portable-llvm/LLVM-19.1.3-Windows-X64/bin/ld.lld.exe
+          CXX: ${{ github.workspace }}/portable-llvm/LLVM-19.1.3-Windows-X64/bin/clang++.exe
+        run: tools/ci/prepare_desktop_generated_sources.sh
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $cpuCores = (Get-CimInstance -ClassName Win32_Processor).NumberOfLogicalProcessors
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -ne 'C:\Program Files\LLVM\bin' }) -join ';'
+          cmake -S . -B build-windows -G Ninja `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl `
+            -DPATCHES_C_COMPILER="${{ github.workspace }}/portable-llvm/LLVM-19.1.3-Windows-X64/bin/clang.exe" `
+            -DPATCHES_LD="${{ github.workspace }}/portable-llvm/LLVM-19.1.3-Windows-X64/bin/ld.lld.exe" `
+            -DCMAKE_CXX_FLAGS="-Xclang -fexceptions -Xclang -fcxx-exceptions"
+          cmake --build build-windows --config RelWithDebInfo --target Zelda64Recompiled -j $cpuCores
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path Zelda64Recompiled-Windows | Out-Null
+          Copy-Item build-windows/Zelda64Recompiled.exe Zelda64Recompiled-Windows/
+          Copy-Item build-windows/dxcompiler.dll Zelda64Recompiled-Windows/
+          Copy-Item build-windows/dxil.dll Zelda64Recompiled-Windows/
+          Copy-Item build-windows/SDL2.dll Zelda64Recompiled-Windows/
+          Copy-Item recompcontrollerdb.txt Zelda64Recompiled-Windows/
+          Copy-Item assets Zelda64Recompiled-Windows/assets -Recurse
+          Remove-Item Zelda64Recompiled-Windows/assets/scss -Recurse -Force
+          Compress-Archive -Path Zelda64Recompiled-Windows -DestinationPath Zelda64Recompiled-Windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zelda64Recompiled-Windows
+          path: Zelda64Recompiled-Windows.zip
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish release
+    if: inputs.release_tag != ''
+    needs:
+      - build-linux
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_title="${{ inputs.release_title }}"
+          if [[ -z "$release_title" ]]; then
+            release_title="${{ inputs.release_tag }}"
+          fi
+          release_notes="${{ inputs.release_notes }}"
+          if [[ -z "$release_notes" ]]; then
+            release_notes="Desktop builds"
+          fi
+          gh release create "${{ inputs.release_tag }}" \
+            artifacts/Zelda64Recompiled-Linux/Zelda64Recompiled-Linux.tar.gz \
+            artifacts/Zelda64Recompiled-macOS/Zelda64Recompiled-macOS.zip \
+            artifacts/Zelda64Recompiled-Windows/Zelda64Recompiled-Windows.zip \
+            --target "${{ github.sha }}" \
+            --title "$release_title" \
+            --notes "$release_notes"

@@ -920,8 +920,12 @@ int main(int argc, char** argv) {
     recomp::register_config_path(zelda64::get_app_folder_path());
     ZELDA_ANDROID_STAGE("registered config path");
     ZELDA_ANDROID_LOG("registered config path: %s", zelda64::get_app_folder_path().string().c_str());
-#if defined(__ANDROID__) || defined(__APPLE__)
+#if defined(__ANDROID__) || defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     disable_obsolete_mods();
+#endif
+#if !defined(__ANDROID__)
+    recomp::mods::ignore_external_mod("mm_recomp_dpad_builtin");
+    recomp::mods::ignore_external_mod("mm_recomp_save_editor");
 #endif
 #if defined(__ANDROID__)
     android_configure_device_flags();
@@ -941,16 +945,7 @@ int main(int argc, char** argv) {
     }
 #endif
 
-#if !defined(ZELDA_ANDROID_RUNTIME_APK)
-#if defined(__APPLE__) && !defined(__ANDROID__)
-    recomp::mods::ignore_external_mod("mm_recomp_dpad_builtin");
-#else
-    recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
-#endif
-#endif
-#if !defined(__ANDROID__) && !defined(__APPLE__)
-    recomp::mods::register_embedded_mod("mm_recomp_save_editor", { (const uint8_t*)(mm_recomp_save_editor), std::size(mm_recomp_save_editor)});
-#elif defined(__ANDROID__)
+#if defined(__ANDROID__)
     if (android_safe_mode_enabled()) {
         ZELDA_ANDROID_LOG("safe mode active; optional embedded mods skipped");
     }
