@@ -183,6 +183,14 @@ file(GLOB FUNC_CXX_SOURCES ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
 
 target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
 
+if (WIN32)
+    target_compile_definitions(RecompiledFuncs PRIVATE osSetTime=osSetTime_game_recomp)
+    set_source_files_properties(
+        ${CMAKE_SOURCE_DIR}/src/main/register_overlays.cpp
+        PROPERTIES COMPILE_DEFINITIONS osSetTime=osSetTime_game_recomp
+    )
+endif()
+
 # PatchesLib - Library containing the recompiled output for any custom function patches
 add_library(PatchesLib STATIC)
 
