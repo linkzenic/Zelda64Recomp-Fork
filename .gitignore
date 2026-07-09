@@ -74,3 +74,6 @@ android/app/build/
 android/app/.cxx/
 *.apk
 *.aab
+
+# Local desktop test artifacts and generated-source bundles
+desktop-artifacts/
