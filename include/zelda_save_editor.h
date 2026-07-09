@@ -12,6 +12,11 @@ enum ValueId : int32_t {
     Tatl,
     IntroComplete,
     OwlSave,
+    BomberCode1,
+    BomberCode2,
+    BomberCode3,
+    BomberCode4,
+    BomberCode5,
     Wallet,
     Rupees,
     BankRupees,
@@ -26,6 +31,7 @@ enum ValueId : int32_t {
     BombBag,
     StickUpgrade,
     NutUpgrade,
+    SpinAttackLevel,
     Arrows,
     Bombs,
     Bombchus,
@@ -37,6 +43,13 @@ enum ValueId : int32_t {
     IceArrows,
     LightArrows,
     MagicBeans,
+    MagicBeansCount,
+    Bottle1,
+    Bottle2,
+    Bottle3,
+    Bottle4,
+    Bottle5,
+    Bottle6,
     PictographBox,
     LensOfTruth,
     Hookshot,
@@ -81,6 +94,8 @@ enum ValueId : int32_t {
     GohtRemains,
     GyorgRemains,
     TwinmoldRemains,
+    SwampSkulltulaTokens,
+    OceanSkulltulaTokens,
     Sonata,
     Lullaby,
     BossaNova,
@@ -123,6 +138,7 @@ int32_t get_pending_value(ValueId id);
 bool has_snapshot();
 bool should_apply_pending();
 void clear_pending();
+void reset_pending_to_snapshot();
 
 }
 

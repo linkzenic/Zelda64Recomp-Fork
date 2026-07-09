@@ -1,5 +1,6 @@
 #include "ui_save_editor_config.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <fstream>
@@ -43,7 +44,69 @@ namespace {
     const std::vector<std::string> bomb_bag_options{ "None", "20", "30", "40" };
     const std::vector<std::string> stick_upgrade_options{ "None", "10", "20", "30" };
     const std::vector<std::string> nut_upgrade_options{ "None", "20", "30", "40" };
+    const std::vector<std::string> spin_attack_options{ "Level 1", "Level 2" };
+    const std::vector<std::string> dungeon_options{ "Woodfall", "Snowhead", "Great Bay", "Stone Tower" };
     const std::vector<std::string> tingle_map_options{ "Clock Town", "Woodfall", "Snowhead", "Romani", "Great Bay", "Stone Tower" };
+    const std::vector<std::string> bottle_slot_options{ "Bottle 1", "Bottle 2", "Bottle 3", "Bottle 4", "Bottle 5", "Bottle 6" };
+    const std::vector<std::string> bottle_slot_short_options{ "1", "2", "3", "4", "5", "6" };
+    const std::vector<std::string> bottle_options{
+        "None",
+        "Empty Bottle",
+        "Red Potion",
+        "Green Potion",
+        "Blue Potion",
+        "Chateau Romani",
+        "Spring Water",
+        "Hot Spring Water",
+        "Milk",
+        "Half Milk",
+        "Fairy",
+        "Fish",
+        "Bugs",
+        "Poe",
+        "Big Poe",
+        "Zora Egg",
+        "Deku Princess",
+        "Gold Dust",
+        "Mushroom",
+        "Seahorse",
+        "Blue Fire",
+        "Hylian Loach"
+    };
+    constexpr std::array<int32_t, 22> bottle_items{
+        0xFF, // ITEM_NONE
+        0x12, // ITEM_BOTTLE
+        0x13, // ITEM_POTION_RED
+        0x14, // ITEM_POTION_GREEN
+        0x15, // ITEM_POTION_BLUE
+        0x25, // ITEM_CHATEAU
+        0x1F, // ITEM_SPRING_WATER
+        0x20, // ITEM_HOT_SPRING_WATER
+        0x18, // ITEM_MILK_BOTTLE
+        0x19, // ITEM_MILK_HALF
+        0x16, // ITEM_FAIRY
+        0x1A, // ITEM_FISH
+        0x1B, // ITEM_BUG
+        0x1D, // ITEM_POE
+        0x1E, // ITEM_BIG_POE
+        0x21, // ITEM_ZORA_EGG
+        0x17, // ITEM_DEKU_PRINCESS
+        0x22, // ITEM_GOLD_DUST
+        0x23, // ITEM_MUSHROOM
+        0x24, // ITEM_SEAHORSE
+        0x1C, // ITEM_BLUE_FIRE
+        0x26, // ITEM_HYLIAN_LOACH
+    };
+    constexpr std::array<zelda64::save_editor::ValueId, 6> bottle_value_ids{
+        zelda64::save_editor::Bottle1,
+        zelda64::save_editor::Bottle2,
+        zelda64::save_editor::Bottle3,
+        zelda64::save_editor::Bottle4,
+        zelda64::save_editor::Bottle5,
+        zelda64::save_editor::Bottle6,
+    };
+    constexpr uint32_t no_bottle_slot_selected = static_cast<uint32_t>(-1);
+    uint32_t selected_bottle_slot = no_bottle_slot_selected;
 
     uint32_t setup_auto_apply = 0;
     uint32_t setup_target_file = 0;
@@ -474,6 +537,52 @@ namespace {
         return (hour % 24) * 0x10000 / 24;
     }
 
+    std::string bomber_code_text() {
+        constexpr std::array<zelda64::save_editor::ValueId, 5> bomber_code_ids{
+            zelda64::save_editor::BomberCode1,
+            zelda64::save_editor::BomberCode2,
+            zelda64::save_editor::BomberCode3,
+            zelda64::save_editor::BomberCode4,
+            zelda64::save_editor::BomberCode5,
+        };
+        std::string code;
+        code.reserve(bomber_code_ids.size());
+        for (zelda64::save_editor::ValueId id : bomber_code_ids) {
+            code.push_back(static_cast<char>('0' + std::clamp(zelda64::save_editor::get_pending_value(id), 1, 5)));
+        }
+        return code;
+    }
+
+    void set_bomber_code_text(const std::string& code) {
+        constexpr std::array<zelda64::save_editor::ValueId, 5> bomber_code_ids{
+            zelda64::save_editor::BomberCode1,
+            zelda64::save_editor::BomberCode2,
+            zelda64::save_editor::BomberCode3,
+            zelda64::save_editor::BomberCode4,
+            zelda64::save_editor::BomberCode5,
+        };
+        if (code.size() != bomber_code_ids.size()) {
+            return;
+        }
+        for (char digit : code) {
+            if (digit < '1' || digit > '5') {
+                return;
+            }
+        }
+        for (size_t i = 0; i < bomber_code_ids.size(); i++) {
+            zelda64::save_editor::set_pending_value(bomber_code_ids[i], code[i] - '0');
+        }
+    }
+
+    uint32_t bottle_option_index(int32_t item) {
+        for (uint32_t i = 0; i < bottle_items.size(); i++) {
+            if (bottle_items[i] == item) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
     constexpr std::string_view live_category_name(SaveEditorConfigPanel::LiveCategory category) {
         using LiveCategory = SaveEditorConfigPanel::LiveCategory;
         switch (category) {
@@ -609,12 +718,28 @@ SaveEditorConfigPanel::SaveEditorConfigPanel(Element *parent, Rml::Element *host
     live_category_container->set_display(Display::None);
     build_live_category_tabs();
 
-    config_sub_menu = get_current_context().create_element<ConfigSubMenu>(this);
+    editor_body_container = get_current_context().create_element<Container>(this, FlexDirection::Row, JustifyContent::FlexStart);
+    editor_body_container->set_flex(1.0f, 1.0f, 100.0f, Unit::Percent);
+    editor_body_container->set_height(100.0f, Unit::Percent);
+    editor_body_container->set_gap(24.0f);
+
+    config_sub_menu = get_current_context().create_element<ConfigSubMenu>(editor_body_container);
+    config_sub_menu->set_flex(1.0f, 1.0f, 0.0f, Unit::Percent);
     config_sub_menu->set_header_visible(false);
     config_sub_menu->set_back_button_visible(false);
     config_sub_menu->set_description_visible(false);
     config_sub_menu->set_large_touch_style(true);
     config_sub_menu->enter("Save Editor");
+
+    bottle_contents_sub_menu = get_current_context().create_element<ConfigSubMenu>(editor_body_container);
+    bottle_contents_sub_menu->set_flex(0.0f, 0.0f, 620.0f, Unit::Dp);
+    bottle_contents_sub_menu->set_max_width(44.0f, Unit::Percent);
+    bottle_contents_sub_menu->set_header_visible(false);
+    bottle_contents_sub_menu->set_back_button_visible(false);
+    bottle_contents_sub_menu->set_description_visible(false);
+    bottle_contents_sub_menu->set_large_touch_style(true);
+    bottle_contents_sub_menu->enter("Bottle Contents");
+    bottle_contents_sub_menu->set_display(Display::None);
 
     rebuild_if_ready();
 }
@@ -632,6 +757,12 @@ void SaveEditorConfigPanel::refresh() {
 
 void SaveEditorConfigPanel::process_event(const Event &e) {
     if (e.type == EventType::Update) {
+        if (live_editor_refresh_pending && mode == Mode::LiveEditor) {
+            live_editor_refresh_pending = false;
+            populate_live_editor_category();
+            return;
+        }
+
         bool import_success = false;
         std::string import_error;
         if (consume_2ship_import_result(import_success, import_error)) {
@@ -676,17 +807,23 @@ void SaveEditorConfigPanel::set_mode(Mode new_mode) {
 
     mode = new_mode;
     live_category_container->set_display(Display::None);
+    editor_body_container->set_display(Display::None);
     config_sub_menu->set_display(Display::None);
+    bottle_contents_sub_menu->set_display(Display::None);
 
     if (mode == Mode::None) {
         config_sub_menu->clear_options();
+        bottle_contents_sub_menu->clear_options();
     }
     else if (mode == Mode::PregameSetup) {
+        editor_body_container->set_display(Display::Flex);
         config_sub_menu->set_display(Display::Flex);
         populate_setup_options();
     }
     else if (mode == Mode::LiveEditor) {
+        zelda64::save_editor::reset_pending_to_snapshot();
         live_category_container->set_display(Display::Flex);
+        editor_body_container->set_display(Display::Flex);
         config_sub_menu->set_display(Display::Flex);
         populate_live_editor();
     }
@@ -718,6 +855,7 @@ void SaveEditorConfigPanel::set_live_category(LiveCategory category) {
     }
 
     live_category = category;
+    selected_bottle_slot = no_bottle_slot_selected;
     update_live_category_tabs();
     populate_live_editor_category();
 }
@@ -811,12 +949,62 @@ void SaveEditorConfigPanel::populate_live_editor() {
     populate_live_editor_category();
 }
 
+void SaveEditorConfigPanel::request_live_editor_refresh() {
+    live_editor_refresh_pending = true;
+    queue_update();
+}
+
+void SaveEditorConfigPanel::populate_bottle_contents_panel() {
+    using namespace zelda64::save_editor;
+
+    bottle_contents_sub_menu->clear_options();
+    bottle_contents_sub_menu->enter("Bottle Contents");
+    bottle_contents_sub_menu->set_display(Display::None);
+    if (selected_bottle_slot >= bottle_value_ids.size()) {
+        return;
+    }
+
+    const ValueId value_id = bottle_value_ids[selected_bottle_slot];
+    const uint32_t current_index = bottle_option_index(value(value_id));
+    config_sub_menu->add_section_header(bottle_slot_options[selected_bottle_slot]);
+    config_sub_menu->add_toggle_option(
+        "bottle_enabled",
+        "Bottle",
+        "Turns this bottle slot on or off.",
+        value(value_id) != bottle_items[0],
+        [this, value_id](const std::string &, bool new_value) {
+            set_value(value_id, new_value ? bottle_items[1] : bottle_items[0]);
+            request_live_editor_refresh();
+        });
+
+    if (value(value_id) == bottle_items[0]) {
+        return;
+    }
+
+    for (uint32_t i = 1; i < bottle_options.size(); i++) {
+        config_sub_menu->add_toggle_option(
+            "bottle_content_" + std::to_string(i),
+            bottle_options[i],
+            "Sets the selected bottle to " + bottle_options[i] + ".",
+            i == current_index,
+            [this, value_id, i](const std::string &, bool new_value) {
+                if (new_value && i < bottle_items.size()) {
+                    set_value(value_id, bottle_items[i]);
+                    request_live_editor_refresh();
+                }
+            });
+    }
+}
+
 void SaveEditorConfigPanel::populate_live_editor_category() {
     using namespace zelda64::save_editor;
 
     SAVE_EDITOR_UI_LOG("SaveEditor UI populate begin");
     config_sub_menu->clear_options();
     config_sub_menu->enter("Save Editor");
+    bottle_contents_sub_menu->clear_options();
+    bottle_contents_sub_menu->enter("Bottle Contents");
+    bottle_contents_sub_menu->set_display(Display::None);
 
     auto add_bool = [this](std::string_view id, std::string_view name, std::string_view description, ValueId value_id) {
         config_sub_menu->add_toggle_option(id, name, description, value(value_id) != 0,
@@ -833,6 +1021,21 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
                             const std::vector<std::string> &options) {
         config_sub_menu->add_radio_option(id, name, description, value(value_id), options,
             [value_id](const std::string &, uint32_t new_value) { set_value(value_id, static_cast<int32_t>(new_value)); });
+    };
+
+    auto add_bottles = [this]() {
+        config_sub_menu->add_radio_option(
+            "bottles", "Bottles", "Choose a bottle slot to edit below.",
+            selected_bottle_slot,
+            bottle_slot_short_options,
+            [this](const std::string &, uint32_t index) {
+                if (index < bottle_value_ids.size()) {
+                    selected_bottle_slot = index;
+                    request_live_editor_refresh();
+                }
+            });
+
+        populate_bottle_contents_panel();
     };
 
     auto add_tingle_maps = [this]() {
@@ -862,17 +1065,25 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
 
     switch (live_category) {
     case LiveCategory::Time:
-        config_sub_menu->add_slider_option("day", "Day", "Sets the current three-day cycle day.", value(Day), 1, 4, 1, false,
-            [](const std::string &, double new_value) { set_value(Day, static_cast<int32_t>(new_value)); });
-        config_sub_menu->add_slider_option("time_of_day", "Time of Day", "Sets the current hour of the day.", raw_time_to_hour(value(Time)), 0, 23, 1, false,
-            [](const std::string &, double new_value) { set_value(Time, hour_to_raw_time(static_cast<int32_t>(new_value))); });
-        config_sub_menu->add_slider_option("time_speed", "Time Speed", "Adjusts the current flow of time.", value(TimeSpeed), -2, 18, 1, false,
-            [](const std::string &, double new_value) { set_value(TimeSpeed, static_cast<int32_t>(new_value)); });
+        {
+            config_sub_menu->add_slider_option("day", "Day", "Sets the current three-day cycle day.", value(Day), 1, 4, 1, false,
+                [](const std::string &, double new_value) { set_value(Day, static_cast<int32_t>(new_value)); });
+            config_sub_menu->add_slider_option("time_of_day", "Time of Day", "Sets the current hour of the day.", raw_time_to_hour(value(Time)), 0, 23, 1, false,
+                [](const std::string &, double new_value) { set_value(Time, hour_to_raw_time(static_cast<int32_t>(new_value))); });
+            config_sub_menu->add_slider_option("time_speed", "Time Speed", "Adjusts the current flow of time.", value(TimeSpeed), -2, 18, 1, false,
+                [](const std::string &, double new_value) { set_value(TimeSpeed, static_cast<int32_t>(new_value)); });
+        }
         break;
     case LiveCategory::State:
         add_bool("tatl", "Tatl", "Controls whether Tatl is with Link.", Tatl);
         add_bool("intro", "Intro Complete", "Controls whether the opening cycle has been completed.", IntroComplete);
         add_bool("owl_save", "Owl Save", "Controls whether the active save is marked as an owl save.", OwlSave);
+        config_sub_menu->add_numeric_text_option("bomber_code", "Bombers Code",
+            "Sets the five-digit Bombers Code. Use digits 1 through 5.",
+            bomber_code_text(), 5,
+            [](const std::string &, const std::string &new_value) {
+                set_bomber_code_text(new_value);
+            });
         break;
     case LiveCategory::Health:
         add_radio("wallet", "Wallet", "Sets the active wallet upgrade.", Wallet, wallet_options);
@@ -892,6 +1103,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_radio("bomb_bag", "Bomb Bag", "Sets the bomb bag upgrade.", BombBag, bomb_bag_options);
         add_radio("stick_upgrade", "Stick Upgrade", "Sets the Deku Stick upgrade.", StickUpgrade, stick_upgrade_options);
         add_radio("nut_upgrade", "Nut Upgrade", "Sets the Deku Nut upgrade.", NutUpgrade, nut_upgrade_options);
+        add_radio("spin_attack", "Spin Attack", "Sets the Great Spin Attack upgrade.", SpinAttackLevel, spin_attack_options);
         break;
     case LiveCategory::Inventory:
         add_slider("arrows", "Arrows", "Sets bow ammo and grants the bow if above zero.", Arrows, 0, 99, 1);
@@ -899,12 +1111,14 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_slider("bombchus", "Bombchus", "Sets bombchu ammo and grants bombchus if above zero.", Bombchus, 0, 99, 1);
         add_slider("sticks", "Deku Sticks", "Sets Deku Stick ammo and grants Deku Sticks if above zero.", DekuSticks, 0, 99, 1);
         add_slider("nuts", "Deku Nuts", "Sets Deku Nut ammo and grants Deku Nuts if above zero.", DekuNuts, 0, 99, 1);
+        add_tingle_maps();
         add_bool("powder_keg", "Powder Keg", "Controls whether the Powder Keg is in inventory.", PowderKeg);
         add_bool("ocarina", "Ocarina", "Controls whether the Ocarina of Time is in inventory.", Ocarina);
         add_bool("fire_arrows", "Fire Arrows", "Controls whether Fire Arrows are in inventory.", FireArrows);
         add_bool("ice_arrows", "Ice Arrows", "Controls whether Ice Arrows are in inventory.", IceArrows);
         add_bool("light_arrows", "Light Arrows", "Controls whether Light Arrows are in inventory.", LightArrows);
         add_bool("magic_beans", "Magic Beans", "Controls whether Magic Beans are in inventory.", MagicBeans);
+        add_slider("magic_beans_count", "Bean Count", "Sets the number of Magic Beans.", MagicBeansCount, 0, 20, 1);
         add_bool("pictograph_box", "Pictograph Box", "Controls whether the Pictograph Box is in inventory.", PictographBox);
         add_bool("lens", "Lens of Truth", "Controls whether the Lens of Truth is in inventory.", LensOfTruth);
         add_bool("hookshot", "Hookshot", "Controls whether the Hookshot is in inventory.", Hookshot);
@@ -913,7 +1127,7 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_bool("letter_mama", "Letter to Mama", "Controls whether Letter to Mama is in inventory.", LetterMama);
         add_bool("letter_kafei", "Letter to Kafei", "Controls whether Letter to Kafei is in inventory.", LetterKafei);
         add_bool("pendant", "Pendant of Memories", "Controls whether the Pendant of Memories is in inventory.", PendantOfMemories);
-        add_tingle_maps();
+        add_bottles();
         break;
     case LiveCategory::Masks:
         add_bool("deku_mask", "Deku Mask", "Controls whether the Deku Mask is in inventory.", DekuMask);
@@ -947,6 +1161,8 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_bool("goht", "Goht Remains", "Controls whether Goht's Remains are owned.", GohtRemains);
         add_bool("gyorg", "Gyorg Remains", "Controls whether Gyorg's Remains are owned.", GyorgRemains);
         add_bool("twinmold", "Twinmold Remains", "Controls whether Twinmold's Remains are owned.", TwinmoldRemains);
+        add_slider("swamp_skulltula_tokens", "Swamp Skulltula Tokens", "Sets Swamp Spider House gold skulltula tokens.", SwampSkulltulaTokens, 0, 30, 1);
+        add_slider("ocean_skulltula_tokens", "Ocean Skulltula Tokens", "Sets Oceanside Spider House gold skulltula tokens.", OceanSkulltulaTokens, 0, 30, 1);
         break;
     case LiveCategory::Songs:
         add_bool("sonata", "Sonata of Awakening", "Controls whether Sonata of Awakening is learned.", Sonata);
@@ -963,26 +1179,45 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
         add_bool("sun", "Sun's Song", "Controls whether Sun's Song is learned.", SunsSong);
         break;
     case LiveCategory::Dungeons:
-        add_bool("woodfall_map", "Woodfall Map", "Controls whether the Woodfall map is owned.", WoodfallMap);
-        add_bool("woodfall_compass", "Woodfall Compass", "Controls whether the Woodfall compass is owned.", WoodfallCompass);
-        add_bool("woodfall_boss_key", "Woodfall Boss Key", "Controls whether the Woodfall boss key is owned.", WoodfallBossKey);
-        add_slider("woodfall_keys", "Woodfall Small Keys", "Sets Woodfall small keys.", WoodfallSmallKeys, 0, 1, 1);
-        add_slider("woodfall_fairies", "Woodfall Stray Fairies", "Sets Woodfall stray fairies.", WoodfallStrayFairies, 0, 15, 1);
-        add_bool("snowhead_map", "Snowhead Map", "Controls whether the Snowhead map is owned.", SnowheadMap);
-        add_bool("snowhead_compass", "Snowhead Compass", "Controls whether the Snowhead compass is owned.", SnowheadCompass);
-        add_bool("snowhead_boss_key", "Snowhead Boss Key", "Controls whether the Snowhead boss key is owned.", SnowheadBossKey);
-        add_slider("snowhead_keys", "Snowhead Small Keys", "Sets Snowhead small keys.", SnowheadSmallKeys, 0, 3, 1);
-        add_slider("snowhead_fairies", "Snowhead Stray Fairies", "Sets Snowhead stray fairies.", SnowheadStrayFairies, 0, 15, 1);
-        add_bool("great_bay_map", "Great Bay Map", "Controls whether the Great Bay map is owned.", GreatBayMap);
-        add_bool("great_bay_compass", "Great Bay Compass", "Controls whether the Great Bay compass is owned.", GreatBayCompass);
-        add_bool("great_bay_boss_key", "Great Bay Boss Key", "Controls whether the Great Bay boss key is owned.", GreatBayBossKey);
-        add_slider("great_bay_keys", "Great Bay Small Keys", "Sets Great Bay small keys.", GreatBaySmallKeys, 0, 1, 1);
-        add_slider("great_bay_fairies", "Great Bay Stray Fairies", "Sets Great Bay stray fairies.", GreatBayStrayFairies, 0, 15, 1);
-        add_bool("stone_tower_map", "Stone Tower Map", "Controls whether the Stone Tower map is owned.", StoneTowerMap);
-        add_bool("stone_tower_compass", "Stone Tower Compass", "Controls whether the Stone Tower compass is owned.", StoneTowerCompass);
-        add_bool("stone_tower_boss_key", "Stone Tower Boss Key", "Controls whether the Stone Tower boss key is owned.", StoneTowerBossKey);
-        add_slider("stone_tower_keys", "Stone Tower Small Keys", "Sets Stone Tower small keys.", StoneTowerSmallKeys, 0, 4, 1);
-        add_slider("stone_tower_fairies", "Stone Tower Stray Fairies", "Sets Stone Tower stray fairies.", StoneTowerStrayFairies, 0, 15, 1);
+        config_sub_menu->add_radio_option("dungeon", "Dungeon", "Choose which dungeon to edit.",
+            static_cast<uint32_t>(dungeon_category), dungeon_options,
+            [this](const std::string &, uint32_t new_value) {
+                if (new_value < static_cast<uint32_t>(DungeonCategory::StoneTower) + 1) {
+                    dungeon_category = static_cast<DungeonCategory>(new_value);
+                    request_live_editor_refresh();
+                }
+            });
+        switch (dungeon_category) {
+        case DungeonCategory::Woodfall:
+            add_bool("woodfall_map", "Map", "Controls whether the Woodfall map is owned.", WoodfallMap);
+            add_bool("woodfall_compass", "Compass", "Controls whether the Woodfall compass is owned.", WoodfallCompass);
+            add_bool("woodfall_boss_key", "Boss Key", "Controls whether the Woodfall boss key is owned.", WoodfallBossKey);
+            add_slider("woodfall_keys", "Small Keys", "Sets Woodfall small keys.", WoodfallSmallKeys, 0, 1, 1);
+            add_slider("woodfall_fairies", "Stray Fairies", "Sets Woodfall stray fairies.", WoodfallStrayFairies, 0, 15, 1);
+            break;
+        case DungeonCategory::Snowhead:
+            add_bool("snowhead_map", "Map", "Controls whether the Snowhead map is owned.", SnowheadMap);
+            add_bool("snowhead_compass", "Compass", "Controls whether the Snowhead compass is owned.", SnowheadCompass);
+            add_bool("snowhead_boss_key", "Boss Key", "Controls whether the Snowhead boss key is owned.", SnowheadBossKey);
+            add_slider("snowhead_keys", "Small Keys", "Sets Snowhead small keys.", SnowheadSmallKeys, 0, 3, 1);
+            add_slider("snowhead_fairies", "Stray Fairies", "Sets Snowhead stray fairies.", SnowheadStrayFairies, 0, 15, 1);
+            break;
+        case DungeonCategory::GreatBay:
+            add_bool("great_bay_map", "Map", "Controls whether the Great Bay map is owned.", GreatBayMap);
+            add_bool("great_bay_compass", "Compass", "Controls whether the Great Bay compass is owned.", GreatBayCompass);
+            add_bool("great_bay_boss_key", "Boss Key", "Controls whether the Great Bay boss key is owned.", GreatBayBossKey);
+            add_slider("great_bay_keys", "Small Keys", "Sets Great Bay small keys.", GreatBaySmallKeys, 0, 1, 1);
+            add_slider("great_bay_fairies", "Stray Fairies", "Sets Great Bay stray fairies.", GreatBayStrayFairies, 0, 15, 1);
+            break;
+        case DungeonCategory::StoneTower:
+            add_bool("stone_tower_map", "Map", "Controls whether the Stone Tower map is owned.", StoneTowerMap);
+            add_bool("stone_tower_compass", "Compass", "Controls whether the Stone Tower compass is owned.", StoneTowerCompass);
+            add_bool("stone_tower_boss_key", "Boss Key", "Controls whether the Stone Tower boss key is owned.", StoneTowerBossKey);
+            add_slider("stone_tower_keys", "Small Keys", "Sets Stone Tower small keys.", StoneTowerSmallKeys, 0, 4, 1);
+            add_slider("stone_tower_fairies", "Stray Fairies", "Sets Stone Tower stray fairies.", StoneTowerStrayFairies, 0, 15, 1);
+            break;
+        }
+        break;
         break;
     case LiveCategory::Count:
         break;
@@ -1040,6 +1275,8 @@ void SaveEditorConfigPanel::populate_live_editor_category() {
     add_bool("ice_arrows", "Ice Arrows", "Controls whether Ice Arrows are in inventory.", IceArrows);
     add_bool("light_arrows", "Light Arrows", "Controls whether Light Arrows are in inventory.", LightArrows);
     add_bool("magic_beans", "Magic Beans", "Controls whether Magic Beans are in inventory.", MagicBeans);
+    add_slider("magic_beans_count", "Bean Count", "Sets the number of Magic Beans.", MagicBeansCount, 0, 20, 1);
+    add_bottles();
     add_bool("pictograph_box", "Pictograph Box", "Controls whether the Pictograph Box is in inventory.", PictographBox);
     add_bool("lens", "Lens of Truth", "Controls whether the Lens of Truth is in inventory.", LensOfTruth);
     add_bool("hookshot", "Hookshot", "Controls whether the Hookshot is in inventory.", Hookshot);

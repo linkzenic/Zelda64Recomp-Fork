@@ -65,6 +65,7 @@ protected:
 public:
     ConfigOptionTextInput(Element *parent, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
     Element* get_focus_element() override { return text_input; }
+    void set_numeric_constraint(size_t max_length);
     void set_large_touch_style(bool enabled) override;
 };
 
@@ -161,6 +162,7 @@ public:
     void set_large_touch_style(bool enabled);
     ConfigOptionElement *add_slider_option(std::string_view id, std::string_view name, std::string_view description, double value, double min, double max, double step, bool percent, std::function<void(const std::string &, double)> callback);
     ConfigOptionElement *add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback);
+    ConfigOptionElement *add_numeric_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, size_t max_length, std::function<void(const std::string &, const std::string &)> callback);
     ConfigOptionElement *add_radio_option(std::string_view id, std::string_view name, std::string_view description, uint32_t value, const std::vector<std::string> &options, std::function<void(const std::string &, uint32_t)> callback);
     ConfigOptionElement *add_multi_toggle_option(std::string_view id, std::string_view name, std::string_view description, const std::vector<std::string> &options, const std::vector<bool> &values, std::function<void(const std::string &, uint32_t, bool)> callback);
     ConfigOptionElement *add_toggle_option(std::string_view id, std::string_view name, std::string_view description, bool value, std::function<void(const std::string &, bool)> callback);

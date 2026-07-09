@@ -39,6 +39,62 @@ static void give_item_with_ammo(s32 item, s32 ammo) {
     AMMO(item) = ammo;
 }
 
+static s32 pending(BuiltinSaveEditorValueId id);
+
+static void clear_button_item(s32 item) {
+    for (s32 form = 0; form < 4; form++) {
+        for (s32 button = 0; button < 4; button++) {
+            if (BUTTON_ITEM_EQUIP(form, button) == item) {
+                BUTTON_ITEM_EQUIP(form, button) = ITEM_NONE;
+            }
+        }
+    }
+}
+
+static void ensure_consumable_upgrade(s32 upgrade, s32 item, s32 value) {
+    Inventory_ChangeUpgrade(upgrade, value);
+    if (value <= 0) {
+        INV_CONTENT(item) = ITEM_NONE;
+        AMMO(item) = 0;
+        clear_button_item(item);
+        return;
+    }
+
+    INV_CONTENT(item) = item;
+    if (AMMO(item) <= 0) {
+        AMMO(item) = CAPACITY(upgrade, value);
+    } else if (AMMO(item) > CUR_CAPACITY(upgrade)) {
+        AMMO(item) = CUR_CAPACITY(upgrade);
+    }
+}
+
+static void apply_pending_equipment(PlayState* play) {
+    Player* player = GET_PLAYER(play);
+    s32 sword = clamp_s32(pending(SAVE_EDITOR_VALUE_SWORD), EQUIP_VALUE_SWORD_NONE, EQUIP_VALUE_SWORD_GILDED);
+    s32 shield = clamp_s32(pending(SAVE_EDITOR_VALUE_SHIELD), EQUIP_VALUE_SHIELD_NONE, EQUIP_VALUE_SHIELD_MIRROR);
+    s32 quiver = clamp_s32(pending(SAVE_EDITOR_VALUE_QUIVER), 0, 3);
+    s32 bombBag = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMB_BAG), 0, 3);
+    s32 stickUpgrade = clamp_s32(pending(SAVE_EDITOR_VALUE_STICK_UPGRADE), 0, 3);
+    s32 nutUpgrade = clamp_s32(pending(SAVE_EDITOR_VALUE_NUT_UPGRADE), 0, 3);
+
+    SET_EQUIP_VALUE(EQUIP_TYPE_SWORD, sword);
+    if (sword == EQUIP_VALUE_SWORD_NONE) {
+        clear_button_item(ITEM_SWORD_KOKIRI);
+        clear_button_item(ITEM_SWORD_RAZOR);
+        clear_button_item(ITEM_SWORD_GILDED);
+    } else {
+        BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_B) = ITEM_SWORD_KOKIRI + sword - EQUIP_VALUE_SWORD_KOKIRI;
+    }
+    Interface_LoadItemIconImpl(play, EQUIP_SLOT_B);
+
+    SET_EQUIP_VALUE(EQUIP_TYPE_SHIELD, shield);
+    ensure_consumable_upgrade(UPG_QUIVER, ITEM_BOW, quiver);
+    ensure_consumable_upgrade(UPG_BOMB_BAG, ITEM_BOMB, bombBag);
+    ensure_consumable_upgrade(UPG_DEKU_STICKS, ITEM_DEKU_STICK, stickUpgrade);
+    ensure_consumable_upgrade(UPG_DEKU_NUTS, ITEM_DEKU_NUT, nutUpgrade);
+    Player_SetEquipmentData(play, player);
+}
+
 typedef struct {
     BuiltinSaveEditorValueId value_id;
     s32 item;
@@ -66,13 +122,17 @@ typedef struct {
     u16 cloud_mask;
 } SaveEditorTingleMap;
 
+typedef struct {
+    BuiltinSaveEditorValueId value_id;
+    s32 slot;
+} SaveEditorBottleSlot;
+
 static const SaveEditorItemToggle s_item_toggles[] = {
     { SAVE_EDITOR_VALUE_POWDER_KEG, ITEM_POWDER_KEG },
     { SAVE_EDITOR_VALUE_OCARINA, ITEM_OCARINA_OF_TIME },
     { SAVE_EDITOR_VALUE_FIRE_ARROWS, ITEM_ARROW_FIRE },
     { SAVE_EDITOR_VALUE_ICE_ARROWS, ITEM_ARROW_ICE },
     { SAVE_EDITOR_VALUE_LIGHT_ARROWS, ITEM_ARROW_LIGHT },
-    { SAVE_EDITOR_VALUE_MAGIC_BEANS, ITEM_MAGIC_BEANS },
     { SAVE_EDITOR_VALUE_PICTOGRAPH_BOX, ITEM_PICTOGRAPH_BOX },
     { SAVE_EDITOR_VALUE_LENS_OF_TRUTH, ITEM_LENS_OF_TRUTH },
     { SAVE_EDITOR_VALUE_HOOKSHOT, ITEM_HOOKSHOT },
@@ -159,6 +219,41 @@ static const SaveEditorTingleMap s_tingle_maps[] = {
       WEEKEVENTREG_TINGLE_MAP_BOUGHT_STONE_TOWER, 0x6000 },
 };
 
+static const SaveEditorBottleSlot s_bottle_slots[] = {
+    { SAVE_EDITOR_VALUE_BOTTLE_1, SLOT_BOTTLE_1 },
+    { SAVE_EDITOR_VALUE_BOTTLE_2, SLOT_BOTTLE_2 },
+    { SAVE_EDITOR_VALUE_BOTTLE_3, SLOT_BOTTLE_3 },
+    { SAVE_EDITOR_VALUE_BOTTLE_4, SLOT_BOTTLE_4 },
+    { SAVE_EDITOR_VALUE_BOTTLE_5, SLOT_BOTTLE_5 },
+    { SAVE_EDITOR_VALUE_BOTTLE_6, SLOT_BOTTLE_6 },
+};
+
+static const s32 s_bottle_contents[] = {
+    ITEM_NONE,
+    ITEM_BOTTLE,
+    ITEM_POTION_RED,
+    ITEM_POTION_GREEN,
+    ITEM_POTION_BLUE,
+    ITEM_CHATEAU,
+    ITEM_SPRING_WATER,
+    ITEM_HOT_SPRING_WATER,
+    ITEM_MILK_BOTTLE,
+    ITEM_MILK_HALF,
+    ITEM_FAIRY,
+    ITEM_FISH,
+    ITEM_BUG,
+    ITEM_POE,
+    ITEM_BIG_POE,
+    ITEM_ZORA_EGG,
+    ITEM_DEKU_PRINCESS,
+    ITEM_GOLD_DUST,
+    ITEM_MUSHROOM,
+    ITEM_SEAHORSE,
+    ITEM_BLUE_FIRE,
+    ITEM_HYLIAN_LOACH,
+    ITEM_OBABA_DRINK,
+};
+
 static s32 wallet_cap(void) {
     switch (GET_CUR_UPG_VALUE(UPG_WALLET)) {
         case 0:
@@ -208,6 +303,29 @@ static void set_tingle_map(const SaveEditorTingleMap* map, bool enabled) {
         CLEAR_WEEKEVENTREG(map->week_event_flag);
         gSaveContext.save.saveInfo.worldMapCloudVisibility &= (u16)~map->cloud_mask;
     }
+}
+
+static void set_skull_token_count(s32 sceneIndex, s32 count) {
+    u32 clamped = (u32)clamp_s32(count, 0, 30);
+
+    if (sceneIndex == SCENE_KINSTA1) {
+        gSaveContext.save.saveInfo.skullTokenCount =
+            (gSaveContext.save.saveInfo.skullTokenCount & SKULL_TOKEN_MASK) |
+            (clamped << SKULL_TOKEN_SWAMP_SHIFT);
+    } else {
+        gSaveContext.save.saveInfo.skullTokenCount =
+            (gSaveContext.save.saveInfo.skullTokenCount & 0xFFFF0000) | clamped;
+    }
+}
+
+static s32 sanitize_bottle_item(s32 item) {
+    for (s32 i = 0; i < ARRAY_COUNT(s_bottle_contents); i++) {
+        if (s_bottle_contents[i] == item) {
+            return item;
+        }
+    }
+
+    return ITEM_NONE;
 }
 
 static void set_heart_piece_count(u32 count) {
@@ -260,6 +378,16 @@ static void sync_snapshot_from_save(void) {
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_TATL, gSaveContext.save.hasTatl ? 1 : 0);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_INTRO_COMPLETE, gSaveContext.save.isFirstCycle ? 1 : 0);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_OWL_SAVE, gSaveContext.save.isOwlSave ? 1 : 0);
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBER_CODE_1,
+                                          clamp_s32(gSaveContext.save.saveInfo.bomberCode[0], 1, 5));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBER_CODE_2,
+                                          clamp_s32(gSaveContext.save.saveInfo.bomberCode[1], 1, 5));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBER_CODE_3,
+                                          clamp_s32(gSaveContext.save.saveInfo.bomberCode[2], 1, 5));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBER_CODE_4,
+                                          clamp_s32(gSaveContext.save.saveInfo.bomberCode[3], 1, 5));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBER_CODE_5,
+                                          clamp_s32(gSaveContext.save.saveInfo.bomberCode[4], 1, 5));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_WALLET, GET_CUR_UPG_VALUE(UPG_WALLET));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_RUPEES, gSaveContext.save.saveInfo.playerData.rupees);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BANK_RUPEES, HS_GET_BANK_RUPEES());
@@ -274,11 +402,20 @@ static void sync_snapshot_from_save(void) {
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMB_BAG, GET_CUR_UPG_VALUE(UPG_BOMB_BAG));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_STICK_UPGRADE, GET_CUR_UPG_VALUE(UPG_DEKU_STICKS));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_NUT_UPGRADE, GET_CUR_UPG_VALUE(UPG_DEKU_NUTS));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_SPIN_ATTACK_LEVEL,
+                                          CHECK_WEEKEVENTREG(WEEKEVENTREG_OBTAINED_GREAT_SPIN_ATTACK) ? 1 : 0);
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_ARROWS, AMMO(ITEM_BOW));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBS, AMMO(ITEM_BOMB));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_BOMBCHUS, AMMO(ITEM_BOMBCHU));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_DEKU_STICKS, AMMO(ITEM_DEKU_STICK));
     recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_DEKU_NUTS, AMMO(ITEM_DEKU_NUT));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_MAGIC_BEANS,
+                                          GET_INV_CONTENT(ITEM_MAGIC_BEANS) == ITEM_MAGIC_BEANS ? 1 : 0);
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_MAGIC_BEANS_COUNT, AMMO(ITEM_MAGIC_BEANS));
+    for (s32 i = 0; i < ARRAY_COUNT(s_bottle_slots); i++) {
+        recomp_save_editor_set_snapshot_value(s_bottle_slots[i].value_id,
+                                              sanitize_bottle_item(gSaveContext.save.saveInfo.inventory.items[s_bottle_slots[i].slot]));
+    }
     for (s32 i = 0; i < ARRAY_COUNT(s_item_toggles); i++) {
         recomp_save_editor_set_snapshot_value(
             s_item_toggles[i].value_id,
@@ -294,6 +431,10 @@ static void sync_snapshot_from_save(void) {
     for (s32 i = 0; i < ARRAY_COUNT(s_remains); i++) {
         recomp_save_editor_set_snapshot_value(s_remains[i].value_id, CHECK_QUEST_ITEM(s_remains[i].quest) ? 1 : 0);
     }
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_SWAMP_SKULLTULA_TOKENS,
+                                          clamp_s32(Inventory_GetSkullTokenCount(SCENE_KINSTA1), 0, 30));
+    recomp_save_editor_set_snapshot_value(SAVE_EDITOR_VALUE_OCEAN_SKULLTULA_TOKENS,
+                                          clamp_s32(Inventory_GetSkullTokenCount(SCENE_KINDAN2), 0, 30));
     for (s32 i = 0; i < ARRAY_COUNT(s_songs); i++) {
         recomp_save_editor_set_snapshot_value(s_songs[i].value_id, CHECK_QUEST_ITEM(s_songs[i].quest) ? 1 : 0);
     }
@@ -322,6 +463,11 @@ static void apply_pending_to_save(PlayState* play) {
     gSaveContext.save.hasTatl = pending(SAVE_EDITOR_VALUE_TATL) != 0;
     gSaveContext.save.isFirstCycle = pending(SAVE_EDITOR_VALUE_INTRO_COMPLETE) != 0;
     gSaveContext.save.isOwlSave = pending(SAVE_EDITOR_VALUE_OWL_SAVE) != 0;
+    gSaveContext.save.saveInfo.bomberCode[0] = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMBER_CODE_1), 1, 5);
+    gSaveContext.save.saveInfo.bomberCode[1] = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMBER_CODE_2), 1, 5);
+    gSaveContext.save.saveInfo.bomberCode[2] = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMBER_CODE_3), 1, 5);
+    gSaveContext.save.saveInfo.bomberCode[3] = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMBER_CODE_4), 1, 5);
+    gSaveContext.save.saveInfo.bomberCode[4] = clamp_s32(pending(SAVE_EDITOR_VALUE_BOMBER_CODE_5), 1, 5);
     set_upgrade_value(UPG_WALLET, clamp_s32(pending(SAVE_EDITOR_VALUE_WALLET), 0, 2));
     gSaveContext.save.saveInfo.playerData.rupees = pending(SAVE_EDITOR_VALUE_RUPEES);
     HS_SET_BANK_RUPEES(clamp_s32(pending(SAVE_EDITOR_VALUE_BANK_RUPEES), 0, MAX_BANK_RUPEES));
@@ -339,13 +485,11 @@ static void apply_pending_to_save(PlayState* play) {
         clamp_s32(pending_magic, 0, gSaveContext.magicCapacity);
     gSaveContext.magicFillTarget = gSaveContext.magicCapacity;
 
-    SET_EQUIP_VALUE(EQUIP_TYPE_SWORD,
-                    clamp_s32(pending(SAVE_EDITOR_VALUE_SWORD), EQUIP_VALUE_SWORD_NONE, EQUIP_VALUE_SWORD_GILDED));
-    SET_EQUIP_VALUE(EQUIP_TYPE_SHIELD, clamp_s32(pending(SAVE_EDITOR_VALUE_SHIELD), 0, 2));
-    set_upgrade_value(UPG_QUIVER, clamp_s32(pending(SAVE_EDITOR_VALUE_QUIVER), 0, 3));
-    set_upgrade_value(UPG_BOMB_BAG, clamp_s32(pending(SAVE_EDITOR_VALUE_BOMB_BAG), 0, 3));
-    set_upgrade_value(UPG_DEKU_STICKS, clamp_s32(pending(SAVE_EDITOR_VALUE_STICK_UPGRADE), 0, 3));
-    set_upgrade_value(UPG_DEKU_NUTS, clamp_s32(pending(SAVE_EDITOR_VALUE_NUT_UPGRADE), 0, 3));
+    if (pending(SAVE_EDITOR_VALUE_SPIN_ATTACK_LEVEL) != 0) {
+        SET_WEEKEVENTREG(WEEKEVENTREG_OBTAINED_GREAT_SPIN_ATTACK);
+    } else {
+        CLEAR_WEEKEVENTREG(WEEKEVENTREG_OBTAINED_GREAT_SPIN_ATTACK);
+    }
     if (pending(SAVE_EDITOR_VALUE_ARROWS) > 0) {
         give_item_with_ammo(ITEM_BOW, pending(SAVE_EDITOR_VALUE_ARROWS));
     }
@@ -361,6 +505,17 @@ static void apply_pending_to_save(PlayState* play) {
     if (pending(SAVE_EDITOR_VALUE_DEKU_NUTS) > 0) {
         give_item_with_ammo(ITEM_DEKU_NUT, pending(SAVE_EDITOR_VALUE_DEKU_NUTS));
     }
+    if (pending(SAVE_EDITOR_VALUE_MAGIC_BEANS) != 0) {
+        give_item_with_ammo(ITEM_MAGIC_BEANS, clamp_s32(pending(SAVE_EDITOR_VALUE_MAGIC_BEANS_COUNT), 1, 20));
+    } else {
+        INV_CONTENT(ITEM_MAGIC_BEANS) = ITEM_NONE;
+        AMMO(ITEM_MAGIC_BEANS) = 0;
+    }
+    apply_pending_equipment(play);
+    for (s32 i = 0; i < ARRAY_COUNT(s_bottle_slots); i++) {
+        gSaveContext.save.saveInfo.inventory.items[s_bottle_slots[i].slot] =
+            sanitize_bottle_item(pending(s_bottle_slots[i].value_id));
+    }
     for (s32 i = 0; i < ARRAY_COUNT(s_item_toggles); i++) {
         INV_CONTENT(s_item_toggles[i].item) = pending(s_item_toggles[i].value_id) != 0 ? s_item_toggles[i].item : ITEM_NONE;
     }
@@ -372,6 +527,8 @@ static void apply_pending_to_save(PlayState* play) {
     for (s32 i = 0; i < ARRAY_COUNT(s_remains); i++) {
         set_quest_flag(s_remains[i].quest, pending(s_remains[i].value_id) != 0);
     }
+    set_skull_token_count(SCENE_KINSTA1, pending(SAVE_EDITOR_VALUE_SWAMP_SKULLTULA_TOKENS));
+    set_skull_token_count(SCENE_KINDAN2, pending(SAVE_EDITOR_VALUE_OCEAN_SKULLTULA_TOKENS));
     for (s32 i = 0; i < ARRAY_COUNT(s_songs); i++) {
         set_quest_flag(s_songs[i].quest, pending(s_songs[i].value_id) != 0);
     }

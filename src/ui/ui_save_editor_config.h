@@ -38,20 +38,33 @@ private:
         LiveEditor,
     };
 
+    enum class DungeonCategory {
+        Woodfall,
+        Snowhead,
+        GreatBay,
+        StoneTower,
+    };
+
     void rebuild_if_ready();
     void populate_setup_options();
     void populate_live_editor();
     void populate_live_editor_category();
+    void populate_bottle_contents_panel();
+    void request_live_editor_refresh();
     void build_live_category_tabs();
     void set_live_category(LiveCategory category);
     void update_live_category_tabs();
     void set_mode(Mode new_mode);
 
     Container *live_category_container = nullptr;
+    Container *editor_body_container = nullptr;
     ConfigSubMenu *config_sub_menu = nullptr;
+    ConfigSubMenu *bottle_contents_sub_menu = nullptr;
     Rml::Element *host_element = nullptr;
     Mode mode = Mode::None;
     LiveCategory live_category = LiveCategory::Time;
+    DungeonCategory dungeon_category = DungeonCategory::Woodfall;
+    bool live_editor_refresh_pending = false;
     std::vector<Button *> live_category_buttons;
 };
 

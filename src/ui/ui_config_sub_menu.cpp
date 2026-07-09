@@ -139,6 +139,11 @@ ConfigOptionTextInput::ConfigOptionTextInput(Element *parent, std::string_view v
     });
 }
 
+void ConfigOptionTextInput::set_numeric_constraint(size_t max_length) {
+    text_input->set_numeric_only(true);
+    text_input->set_max_length(max_length);
+}
+
 void ConfigOptionTextInput::set_large_touch_style(bool enabled) {
     ConfigOptionElement::set_large_touch_style(enabled);
     if (!enabled) {
@@ -508,6 +513,12 @@ ConfigOptionElement *ConfigSubMenu::add_slider_option(std::string_view id, std::
 
 ConfigOptionElement *ConfigSubMenu::add_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, std::function<void(const std::string &, const std::string &)> callback) {
     ConfigOptionTextInput *option_text_input = get_current_context().create_element<ConfigOptionTextInput>(config_scroll_container, value, callback);
+    return add_option(option_text_input, id, name, description);
+}
+
+ConfigOptionElement *ConfigSubMenu::add_numeric_text_option(std::string_view id, std::string_view name, std::string_view description, std::string_view value, size_t max_length, std::function<void(const std::string &, const std::string &)> callback) {
+    ConfigOptionTextInput *option_text_input = get_current_context().create_element<ConfigOptionTextInput>(config_scroll_container, value, callback);
+    option_text_input->set_numeric_constraint(max_length);
     return add_option(option_text_input, id, name, description);
 }
 

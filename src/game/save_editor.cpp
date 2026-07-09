@@ -80,4 +80,11 @@ void clear_pending() {
     pending_values = snapshot_values;
 }
 
+void reset_pending_to_snapshot() {
+    std::lock_guard lock{ save_editor_mutex };
+    pending_apply = false;
+    pending_initialized = false;
+    pending_values = snapshot_values;
+}
+
 }
