@@ -56,7 +56,7 @@ build_file_to_c() {
   fi
 
   echo "Building host file_to_c helper."
-  "${CXX:-c++}" -std=c++17 -O2 "$source_path" -o "$FILE_TO_C"
+  "${ZELDA_FILE_TO_C_CXX:-${CXX:-c++}}" -std=c++17 -O2 "$source_path" -o "$FILE_TO_C"
 }
 
 refresh_patch_sources() {

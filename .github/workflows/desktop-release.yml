@@ -186,8 +186,7 @@ jobs:
         env:
           PATCHES_C_COMPILER: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang.exe
           PATCHES_LD: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/ld.lld.exe
-          CC: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang.exe
-          CXX: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang++.exe
+          ZELDA_FILE_TO_C_CXX: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang++.exe
         run: tools/ci/prepare_desktop_generated_sources.sh
 
       - name: Build
