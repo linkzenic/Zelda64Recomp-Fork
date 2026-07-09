@@ -38,7 +38,7 @@ build_recomp_tools() {
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_MAKE_PROGRAM=ninja
-  cmake --build "$N64RECOMP_BUILD_DIR" --config Release --target N64Recomp RSPRecomp -j "$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)"
+  cmake --build "$N64RECOMP_BUILD_DIR" --config Release --target N64RecompCLI RSPRecomp -j "$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)"
 
   local n64recomp_path
   local rsprecomp_path
