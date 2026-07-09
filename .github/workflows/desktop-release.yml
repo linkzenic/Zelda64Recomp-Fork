@@ -256,6 +256,7 @@ jobs:
             artifacts/Zelda64Recompiled-Linux/Zelda64Recompiled-Linux.tar.gz \
             artifacts/Zelda64Recompiled-macOS/Zelda64Recompiled-macOS.zip \
             artifacts/Zelda64Recompiled-Windows/Zelda64Recompiled-Windows.zip \
+            --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "$release_title" \
             --notes "$release_notes"
