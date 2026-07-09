@@ -1,6 +1,6 @@
 # Zelda64Recomp Fork
 
-Fork of [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp), focused on macOS, Linux, and Windows builds.
+Fork of [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp), for  Mac, Linux, and Windows.
 
 The goal is ann updated and sleak desktop fork with quality-of-life work: updated menus, built-in editor features, save improvements, and desktop release packaging.
 
