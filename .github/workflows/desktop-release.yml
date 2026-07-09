@@ -166,7 +166,7 @@ jobs:
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Windows-X64.tar.xz" -OutFile "LLVM.tar.xz"
+          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz" -OutFile "LLVM.tar.xz"
           New-Item -ItemType Directory -Path portable-llvm | Out-Null
           7z x LLVM.tar.xz
           7z x LLVM.tar -oportable-llvm
@@ -184,10 +184,10 @@ jobs:
       - name: Prepare generated sources
         shell: bash
         env:
-          PATCHES_C_COMPILER: ${{ github.workspace }}/portable-llvm/LLVM-20.1.8-Windows-X64/bin/clang.exe
-          PATCHES_LD: ${{ github.workspace }}/portable-llvm/LLVM-20.1.8-Windows-X64/bin/ld.lld.exe
-          CC: ${{ github.workspace }}/portable-llvm/LLVM-20.1.8-Windows-X64/bin/clang.exe
-          CXX: ${{ github.workspace }}/portable-llvm/LLVM-20.1.8-Windows-X64/bin/clang++.exe
+          PATCHES_C_COMPILER: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang.exe
+          PATCHES_LD: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/ld.lld.exe
+          CC: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang.exe
+          CXX: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang++.exe
         run: tools/ci/prepare_desktop_generated_sources.sh
 
       - name: Build
@@ -195,7 +195,7 @@ jobs:
         run: |
           $cpuCores = (Get-CimInstance -ClassName Win32_Processor).NumberOfLogicalProcessors
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -ne 'C:\Program Files\LLVM\bin' }) -join ';'
-          $llvmRoot = "${{ github.workspace }}/portable-llvm/LLVM-20.1.8-Windows-X64/bin"
+          $llvmRoot = "${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin"
           cmake -S . -B build-windows -G Ninja `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
             -DCMAKE_C_COMPILER="$llvmRoot/clang-cl.exe" `
