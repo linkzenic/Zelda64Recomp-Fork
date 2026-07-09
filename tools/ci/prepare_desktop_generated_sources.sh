@@ -39,8 +39,18 @@ build_recomp_tools() {
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_MAKE_PROGRAM=ninja
   cmake --build "$N64RECOMP_BUILD_DIR" --config Release --target N64Recomp RSPRecomp -j "$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)"
-  cp "$N64RECOMP_BUILD_DIR/N64Recomp${EXE_SUFFIX}" "./N64Recomp${EXE_SUFFIX}"
-  cp "$N64RECOMP_BUILD_DIR/RSPRecomp${EXE_SUFFIX}" "./RSPRecomp${EXE_SUFFIX}"
+
+  local n64recomp_path
+  local rsprecomp_path
+  n64recomp_path="$(find "$N64RECOMP_BUILD_DIR" -type f -name "N64Recomp${EXE_SUFFIX}" -print -quit)"
+  rsprecomp_path="$(find "$N64RECOMP_BUILD_DIR" -type f -name "RSPRecomp${EXE_SUFFIX}" -print -quit)"
+  if [[ -z "$n64recomp_path" || -z "$rsprecomp_path" ]]; then
+    echo "Failed to find built N64Recomp/RSPRecomp binaries in $N64RECOMP_BUILD_DIR" >&2
+    exit 2
+  fi
+
+  cp "$n64recomp_path" "./N64Recomp${EXE_SUFFIX}"
+  cp "$rsprecomp_path" "./RSPRecomp${EXE_SUFFIX}"
   chmod +x "./N64Recomp${EXE_SUFFIX}" "./RSPRecomp${EXE_SUFFIX}"
 }
 
