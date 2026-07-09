@@ -15,8 +15,8 @@ Release packages are planned for:
 - Mac
 - Linux
 - Windows
+- For Android releases visit my Android Repo: https://github.com/linkzenic/Zelda64Recomp-Android
 
-This project is not an emulator and does not include copyrighted game assets. Game assets are not included. Users must provide their own legally obtained ROM when the app asks for it.
 
 ## Requirements
 
@@ -25,6 +25,7 @@ This project is not an emulator and does not include copyrighted game assets. Ga
   - Mac
   - Linux
   - Windows
+This project is not an emulator and does not include copyrighted game assets. Game assets are not included. Users must provide their own legally obtained ROM when the app asks for it.
 
 ## What This Fork Adds
 
