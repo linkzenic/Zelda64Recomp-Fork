@@ -2,17 +2,17 @@
 
 Fork of [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp), for  Mac, Linux, and Windows.
 
-The goal is ann updated and sleak desktop fork with quality-of-life work: updated menus, built-in editor features, save improvements, and desktop release packaging.
+The goal is an updated and sleak desktop app with quality-of-life imrpovements: updated menus, built-in editor features, updated save options, JSON Save file import, and 2Ship clock imports.
 
 ## Downloads
 
-Desktop releases will be published here:
+Desktop releases published here:
 
 https://github.com/linkzenic/Zelda64Recomp-Fork/releases
 
 Release packages are planned for:
 
-- macOS
+- Mac
 - Linux
 - Windows
 
@@ -22,30 +22,32 @@ This project is not an emulator and does not include copyrighted game assets. Ga
 
 - A legally obtained supported ROM
 - A modern desktop OS:
-  - macOS
+  - Mac
   - Linux
   - Windows
 
 ## What This Fork Adds
 
-- Desktop release packaging for macOS, Linux, and Windows
-- Built-in save editor work from the Linkzenic fork
-- N64 Mode for a stripped-down launch path
+- Updated modern UI designs for Mac, Linux, and Windows
+- JSON save file import
+- O2R clock imports
+- Built-in save editor work from the Linkzenic plugin
+- N64 Mode 
 
 ## Mods
 
-Desktop mods should use desktop-compatible packages for your platform.
+Recomp mods should be fully compatibale with this fork.
 
-This fork ignores older external copies of the D-Pad Special Items and Linkzenic Save Editor mods when they would conflict with features already built into the app. This prevents duplicate mod patches from breaking startup while still allowing the app to use the built-in versions.
+This fork ignores older external copies of the D-Pad Special Items and Linkzenic Save Editor mods because they would conflict with features already built into the app. This prevents duplicate mod patches from breaking startup while still allowing the app to use the built-in versions.
 
 
 ## N64 Mode
 
-N64 Mode is intended as a simpler launch path:
+N64 Mode enables a more classic gameplay:
 
 - no optional mods
-- no extra fork features that change gameplay behavior
-- closer to the raw N64 experience
+- no extra features that change gameplay behavior
+- closer to the raw N64 experience (except widescreen is kept as enabled)
 
 
 ## Upstream
