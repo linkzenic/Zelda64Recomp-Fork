@@ -23,10 +23,18 @@ static bool n64_mode_from_env() {
         (n64_mode != nullptr && n64_mode[0] == '1');
 }
 
+static void set_launcher_env(const char* name, const char* value) {
+#if defined(_WIN32)
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
 static void set_n64_mode(bool enabled) {
     safe_mode_enabled = enabled;
-    setenv("APP_SAFE_MODE", enabled ? "1" : "0", 1);
-    setenv("APP_N64_MODE", enabled ? "1" : "0", 1);
+    set_launcher_env("APP_SAFE_MODE", enabled ? "1" : "0");
+    set_launcher_env("APP_N64_MODE", enabled ? "1" : "0");
     if (model_handle) {
         model_handle.DirtyVariable("safe_mode_enabled");
     }
