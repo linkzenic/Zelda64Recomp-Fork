@@ -150,6 +150,15 @@ target_compile_definitions(rmlui_core PRIVATE LUNASVG_BUILD_STATIC)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    if (TARGET fmt)
+        target_compile_definitions(fmt PUBLIC FMT_USE_CONSTEVAL=0)
+    endif()
+    if (TARGET fmt-header-only)
+        target_compile_definitions(fmt-header-only INTERFACE FMT_USE_CONSTEVAL=0)
+    endif()
+endif()
+
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 
 # RecompiledFuncs - Library containing the primary recompiler output
