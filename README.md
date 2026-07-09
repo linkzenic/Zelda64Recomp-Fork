@@ -30,6 +30,7 @@ This project is not an emulator and does not include copyrighted game assets. Ga
 ## What This Fork Adds
 
 - Updated modern UI designs for Mac, Linux, and Windows
+- Updated RT64 to upstream
 - JSON save file import
 - O2R clock imports
 - Built-in save editor work from the Linkzenic plugin
