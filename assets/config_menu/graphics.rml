@@ -384,7 +384,7 @@
                                 value="Original"
                                 id="clock_original"
                                 style="nav-up: #hr_original; nav-down: #apply_button"
-                                data-attr-style="is_android ? 'nav-up: #hr_original; nav-down: #clock_texture_import' : 'nav-up: #hr_original; nav-down: #apply_button'"
+                                data-attr-style="'nav-up: #hr_original; nav-down: #clock_texture_import'"
                             />
                             <label class="config-option__tab-label" for="clock_original">Original</label>
                             <input type="radio"
@@ -395,11 +395,10 @@
                                 value="ThreeDS"
                                 id="clock_3ds"
                                 style="nav-up: #hr_16_9; nav-down: #apply_button"
-                                data-attr-style="is_android ? 'nav-up: #hr_16_9; nav-down: #clock_texture_import' : 'nav-up: #hr_16_9; nav-down: #apply_button'"
+                                data-attr-style="'nav-up: #hr_16_9; nav-down: #clock_texture_import'"
                             />
                             <label class="config-option__tab-label" for="clock_3ds">3DS</label>
                             <input
-                                data-if="is_android"
                                 type="radio"
                                 data-event-click="select_clock_texture_pack"
                                 data-event-blur="set_cur_config_index(-1)"
@@ -410,7 +409,7 @@
                                 id="clock_texture_import"
                                 style="nav-up:#hr_full; nav-down:#apply_button"
                             />
-                            <label data-if="is_android" class="config-option__tab-label" for="clock_texture_import">Import</label>
+                            <label class="config-option__tab-label" for="clock_texture_import">Import</label>
                         </div>
                     </div>
 
@@ -477,7 +476,7 @@
                         onclick="apply_options"
                         id="apply_button"
                         style="nav-up:#clock_original"
-                        data-attr-style="is_android ? 'nav-up:#clock_texture_import' : 'nav-up:#clock_original'"
+                        data-attr-style="'nav-up:#clock_texture_import'"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

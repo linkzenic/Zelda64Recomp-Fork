@@ -2,22 +2,69 @@
 
 #include "librecomp/mods.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 namespace recompui {
     static const std::string ManifestFilename = "mod.json";
     static const char *TextureDatabaseFilename = "rt64.json";
     static const std::u8string OldExtension = u8".old";
     static const std::u8string NewExtension = u8".new";
 
-    static bool is_dynamic_lib(const std::filesystem::path &file_path) {
+    static std::string lowercase_extension(const std::filesystem::path& file_path) {
+        std::string extension = file_path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return extension;
+    }
+
+    static std::filesystem::path native_library_filename(const std::string& library_name) {
 #if defined(_WIN32)
-        return file_path.extension() == ".dll";
+        return library_name + ".dll";
 #elif defined(__linux__)
-        return file_path.extension() == ".so" || file_path.filename().string().find(".so.") != std::string::npos;
+        return library_name + ".so";
 #elif defined(__APPLE__)
-        return file_path.extension() == ".dylib";
+        return library_name + ".dylib";
 #else
         static_assert(false, "Unimplemented for this platform.");
 #endif
+    }
+
+    static bool is_dynamic_lib(const std::filesystem::path &file_path) {
+#if defined(_WIN32)
+        return lowercase_extension(file_path) == ".dll";
+#elif defined(__linux__)
+        return lowercase_extension(file_path) == ".so" || file_path.filename().string().find(".so.") != std::string::npos;
+#elif defined(__APPLE__)
+        return lowercase_extension(file_path) == ".dylib";
+#else
+        static_assert(false, "Unimplemented for this platform.");
+#endif
+    }
+
+    static bool stage_additional_file(
+        const std::filesystem::path& source_path,
+        const std::filesystem::path& mods_directory,
+        const std::string& install_source_name,
+        ModInstaller::Installation& installation,
+        ModInstaller::Result& result
+    ) {
+        std::error_code ec;
+        std::filesystem::path target_path = mods_directory / source_path.filename();
+        std::filesystem::path target_write_path = target_path.u8string() + NewExtension;
+        std::filesystem::copy(source_path, target_write_path, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            result.error_messages.emplace_back("Failed to install " + install_source_name + " to mod directory.");
+            std::filesystem::remove(target_write_path, ec);
+            return false;
+        }
+
+        installation.additional_files.emplace_back(target_path);
+        if (std::filesystem::exists(target_path, ec)) {
+            installation.needs_overwrite_confirmation = true;
+        }
+        return true;
     }
 
     size_t zip_write_func(void *opaque, mz_uint64 offset, const void *bytes, size_t count) {
@@ -33,6 +80,7 @@ namespace recompui {
         std::filesystem::path target_path = mods_directory / file_path.filename();
         std::filesystem::path target_write_path = target_path.u8string() + NewExtension;
         ModInstaller::Installation installation;
+        std::vector<std::string> native_libraries;
         bool exists = false;
         std::vector<char> manifest_bytes = file_handle.read_file(ManifestFilename, exists);
         if (exists) {
@@ -47,6 +95,9 @@ namespace recompui {
                 installation.display_name = manifest.display_name;
                 installation.mod_version = manifest.version;
                 installation.mod_file = target_path;
+                for (const recomp::mods::NativeLibraryManifest& native_library : manifest.native_libraries) {
+                    native_libraries.emplace_back(native_library.name);
+                }
             }
         }
         else if (file_path.extension() == ".rtz") {
@@ -73,6 +124,16 @@ namespace recompui {
             result.error_messages.emplace_back(file_path.string() + " is not a mod.");
             std::filesystem::remove(target_write_path, ec);
             return;
+        }
+
+        for (const std::string& native_library : native_libraries) {
+            std::filesystem::path source_path = file_path.parent_path() / native_library_filename(native_library);
+            if (std::filesystem::exists(source_path, ec)) {
+                if (!stage_additional_file(source_path, mods_directory, file_path.filename().string(), installation, result)) {
+                    std::filesystem::remove(target_write_path, ec);
+                    return;
+                }
+            }
         }
 
         if (std::filesystem::exists(installation.mod_file, ec)) {
@@ -285,15 +346,14 @@ namespace recompui {
 
     void ModInstaller::start_mod_installation(const std::list<std::filesystem::path> &file_paths, std::function<void(std::filesystem::path, size_t, size_t)> progress_callback, Result &result) {
         result = Result();
+        std::list<std::filesystem::path> loose_dynamic_libs;
 
         for (const std::filesystem::path &path : file_paths) {
             if (is_dynamic_lib(path)) {
-                result.error_messages.emplace_back("The provided mod(s) must be installed without extracting the ZIP file(s). Please install the mod ZIP file(s) directly.");
-                return;
+                loose_dynamic_libs.emplace_back(path);
+                continue;
             }
-        }
 
-        for (const std::filesystem::path &path : file_paths) {
             recomp::mods::ModOpenError open_error;
             recomp::mods::ZipModFileHandle file_handle(path, open_error);
             if (open_error != recomp::mods::ModOpenError::Good) {
@@ -309,6 +369,22 @@ namespace recompui {
             else {
                 // Scan the container for compatible mods instead. This is the case for packages made by users or how they're tipically uploaded to Thunderstore.
                 start_package_mod_installation(path, file_handle, progress_callback, result);
+            }
+        }
+
+        if (!loose_dynamic_libs.empty()) {
+            auto first_nrm_iterator = std::find_if(result.pending_installations.begin(), result.pending_installations.end(), [](const Installation& installation) {
+                return installation.mod_file.extension() == ".nrm";
+            });
+
+            if (first_nrm_iterator == result.pending_installations.end()) {
+                result.error_messages.emplace_back("Native library files must be installed with their matching mod file.");
+                return;
+            }
+
+            std::filesystem::path mods_directory = recomp::mods::get_mods_directory();
+            for (const std::filesystem::path& path : loose_dynamic_libs) {
+                stage_additional_file(path, mods_directory, path.filename().string(), *first_nrm_iterator, result);
             }
         }
     }

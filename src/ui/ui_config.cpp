@@ -13,6 +13,7 @@
 #include "core/ui_context.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <initializer_list>
 #include <string>
 
@@ -775,12 +776,10 @@ public:
         constructor.Bind("android_custom_vulkan_driver_active", &android_custom_vulkan_driver_active);
 
         static std::string clock_texture_pack_name = [] {
-#if defined(__ANDROID__)
             const char* pack_display_name = std::getenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME");
             if (pack_display_name != nullptr && pack_display_name[0] != '\0') {
                 return std::string{ pack_display_name };
             }
-#endif
             return std::string{ "Bundled" };
         }();
         constructor.Bind("clock_texture_pack_name", &clock_texture_pack_name);
@@ -797,7 +796,35 @@ public:
 
         constructor.BindEventCallback("select_clock_texture_pack",
             [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+#if defined(__ANDROID__)
                 zelda64::open_clock_texture_file_dialog();
+#else
+                zelda64::open_file_dialog([model_handle](bool success, const std::filesystem::path& path) mutable {
+                    if (!success) {
+                        return;
+                    }
+
+                    if (path.extension() != ".o2r") {
+                        zelda64::show_error_message_box("Clock texture pack", "Please select a 2Ship .o2r texture pack.");
+                        return;
+                    }
+
+#if defined(_WIN32)
+                    _putenv_s("APP_CLOCK_TEXTURE_PACK_PATH", path.string().c_str());
+                    _putenv_s("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME", path.filename().string().c_str());
+#else
+                    setenv("APP_CLOCK_TEXTURE_PACK_PATH", path.string().c_str(), 1);
+                    setenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME", path.filename().string().c_str(), 1);
+#endif
+                    clock_texture_pack_name = path.filename().string();
+                    zelda64::set_clock_style(zelda64::ClockStyle::Import);
+                    recompui::request_clock_texture_reload();
+                    model_handle.DirtyVariable("clock_texture_pack_name");
+                    model_handle.DirtyVariable("clock_style");
+                    model_handle.DirtyVariable("options_changed");
+                    model_handle.DirtyVariable("ds_info");
+                });
+#endif
             });
 
         constructor.BindFunc("res_option",
