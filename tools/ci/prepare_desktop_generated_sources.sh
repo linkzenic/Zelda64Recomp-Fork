@@ -73,6 +73,7 @@ refresh_patch_sources() {
   build_recomp_tools
   build_file_to_c
 
+  make -C patches clean
   CC="${PATCHES_C_COMPILER:-clang}" LD="${PATCHES_LD:-ld.lld}" make -C patches
   "./N64Recomp${EXE_SUFFIX}" patches.toml
   "$FILE_TO_C" patches/patches.bin mm_patches_bin RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h

@@ -120,7 +120,11 @@ static bool android_string_equals_ci(const char* value, const char* expected) {
 #endif
 
 static void disable_obsolete_mods() {
-    static constexpr const char* save_editor_mod_id = "mm_recomp_save_editor";
+    static constexpr std::array obsolete_mod_ids{
+        "mm_recomp_save_editor",
+        "mm_recomp_dpad_builtin",
+        "mm_recomp_dpad",
+    };
     const std::filesystem::path mods_config_path = zelda64::get_app_folder_path() / "mods.json";
 
     std::ifstream input_file{mods_config_path};
@@ -147,7 +151,11 @@ static void disable_obsolete_mods() {
         auto& array = *array_it;
         const size_t old_size = array.size();
         array.erase(std::remove_if(array.begin(), array.end(), [](const nlohmann::json& entry) {
-            return entry.is_string() && entry.get<std::string>() == save_editor_mod_id;
+            if (!entry.is_string()) {
+                return false;
+            }
+            const std::string mod_id = entry.get<std::string>();
+            return std::find(obsolete_mod_ids.begin(), obsolete_mod_ids.end(), mod_id) != obsolete_mod_ids.end();
         }), array.end());
         changed = changed || array.size() != old_size;
     };
@@ -174,7 +182,7 @@ static void disable_obsolete_mods() {
         return;
     }
 
-    ZELDA_ANDROID_LOG("disabled obsolete mod: %s", save_editor_mod_id);
+    ZELDA_ANDROID_LOG("disabled obsolete built-in mods");
 }
 
 #if defined(__ANDROID__)
@@ -925,6 +933,7 @@ int main(int argc, char** argv) {
     disable_obsolete_mods();
 #endif
     recomp::mods::ignore_external_mod("mm_recomp_dpad_builtin");
+    recomp::mods::ignore_external_mod("mm_recomp_dpad");
     recomp::mods::ignore_external_mod("mm_recomp_save_editor");
 #if defined(__ANDROID__)
     android_configure_device_flags();
