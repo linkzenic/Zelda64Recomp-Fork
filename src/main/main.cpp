@@ -578,6 +578,7 @@ RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
 
 extern "C" void recomp_entrypoint(uint8_t * rdram, recomp_context * ctx);
 extern "C" void recomp_get_dpad_items_enabled(uint8_t* rdram, recomp_context* ctx);
+extern "C" void recomp_get_dpad_items_mode_for_dpad_builtin(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_clock_style(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_get_clock_texture_pack_loaded(uint8_t* rdram, recomp_context* ctx);
 extern "C" void recomp_should_use_3ds_clock_overlay(uint8_t* rdram, recomp_context* ctx);
@@ -923,10 +924,8 @@ int main(int argc, char** argv) {
 #if defined(__ANDROID__) || defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     disable_obsolete_mods();
 #endif
-#if !defined(__ANDROID__)
     recomp::mods::ignore_external_mod("mm_recomp_dpad_builtin");
     recomp::mods::ignore_external_mod("mm_recomp_save_editor");
-#endif
 #if defined(__ANDROID__)
     android_configure_device_flags();
 #endif
@@ -948,8 +947,20 @@ int main(int argc, char** argv) {
 #if defined(__ANDROID__)
     if (android_safe_mode_enabled()) {
         ZELDA_ANDROID_LOG("safe mode active; optional embedded mods skipped");
-    }
+    } else
 #endif
+    {
+        recomp::mods::register_embedded_mod(
+            "mm_recomp_dpad_builtin",
+            std::span<const uint8_t>(
+                reinterpret_cast<const uint8_t*>(mm_recomp_dpad_builtin),
+                mm_recomp_dpad_builtin_size));
+        recomp::mods::register_embedded_mod(
+            "mm_recomp_save_editor",
+            std::span<const uint8_t>(
+                reinterpret_cast<const uint8_t*>(mm_recomp_save_editor),
+                mm_recomp_save_editor_size));
+    }
     ZELDA_ANDROID_STAGE("registered embedded mods");
 
     REGISTER_FUNC(recomp_get_window_resolution);
@@ -972,6 +983,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     REGISTER_FUNC(recomp_get_dpad_items_enabled);
+    REGISTER_FUNC(recomp_get_dpad_items_mode_for_dpad_builtin);
     REGISTER_FUNC(recomp_get_clock_style);
     REGISTER_FUNC(recomp_get_clock_texture_pack_loaded);
     REGISTER_FUNC(recomp_should_use_3ds_clock_overlay);
