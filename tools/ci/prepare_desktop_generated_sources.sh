@@ -80,12 +80,6 @@ refresh_patch_sources() {
 }
 
 if have_runtime_sources; then
-  if [[ "${OS:-}" == "Windows_NT" && "${ZELDA_FORCE_PATCH_REFRESH:-0}" != "1" ]]; then
-    echo "Generated runtime sources are already present; using restored patch artifacts on Windows."
-    echo "Set ZELDA_FORCE_PATCH_REFRESH=1 to force local patch regeneration."
-    exit 0
-  fi
-
   echo "Generated runtime sources are already present; refreshing desktop patch artifacts."
   refresh_patch_sources
   exit 0
