@@ -6,6 +6,7 @@
 
 #include "librecomp/mods.hpp"
 
+#include <algorithm>
 #include <string>
 
 #ifdef WIN32
@@ -27,16 +28,19 @@ static bool is_mod_enabled_or_auto(const std::string &mod_id) {
 }
 
 static bool is_builtin_replacement_mod_blocked(const std::string &mod_id) {
-#if defined(__APPLE__)
     return mod_id == "mm_recomp_save_editor";
-#else
-    (void)mod_id;
-    return false;
-#endif
 }
 
 static bool is_mod_enabled_for_display(const std::string &mod_id) {
     return !is_builtin_replacement_mod_blocked(mod_id) && is_mod_enabled_or_auto(mod_id);
+}
+
+static void hide_builtin_replacement_mods(std::vector<recomp::mods::ModDetails>& mod_details) {
+    mod_details.erase(
+        std::remove_if(mod_details.begin(), mod_details.end(), [](const recomp::mods::ModDetails& details) {
+            return is_builtin_replacement_mod_blocked(details.mod_id);
+        }),
+        mod_details.end());
 }
 
 // ModEntryView
@@ -268,6 +272,8 @@ void ModMenu::refresh_mods(bool scan_mods) {
         recomp::mods::scan_mods();
     }
     mod_details = recomp::mods::get_all_mod_details(game_mod_id);
+    hide_builtin_replacement_mods(mod_details);
+    active_mod_index = -1;
     create_mod_list();
 }
 
@@ -445,6 +451,7 @@ void ModMenu::mod_dragged(uint32_t mod_index, EventDrag drag) {
         // Re-order the mods and update all the details on the menu.
         recomp::mods::set_mod_index(game_mod_id, mod_details[mod_index].mod_id, mod_drag_target_index);
         mod_details = recomp::mods::get_all_mod_details(game_mod_id);
+        hide_builtin_replacement_mods(mod_details);
         for (size_t i = 0; i < mod_entry_buttons.size(); i++) {
             mod_entry_buttons[i]->set_mod_details(mod_details[i]);
             mod_entry_buttons[i]->set_mod_thumbnail(generate_thumbnail_src_for_mod(mod_details[i].mod_id));
