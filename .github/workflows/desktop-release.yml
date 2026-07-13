@@ -51,6 +51,26 @@ jobs:
       - name: Prepare generated sources
         run: tools/ci/prepare_desktop_generated_sources.sh
 
+      - name: Package refreshed desktop patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf Zelda64Recompiled-DesktopPatches.tar.gz \
+            patches/patches.bin \
+            patches/patches.elf \
+            RecompiledPatches/patches.c \
+            RecompiledPatches/patches_bin.c \
+            RecompiledPatches/patches_bin.h \
+            RecompiledPatches/recomp_overlays.inl \
+            RecompiledPatches/funcs.h
+
+      - name: Upload refreshed desktop patches
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zelda64Recompiled-DesktopPatches
+          path: Zelda64Recompiled-DesktopPatches.tar.gz
+          if-no-files-found: error
+
       - name: Build
         shell: bash
         run: |
@@ -149,6 +169,8 @@ jobs:
 
   build-windows:
     name: Windows
+    needs:
+      - build-linux
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -181,13 +203,15 @@ jobs:
           ZELDA_GENERATED_SOURCES_TOKEN: ${{ secrets.ZELDA_GENERATED_SOURCES_TOKEN || secrets.ZELDA_ANDROID_GENERATED_SOURCES_TOKEN }}
         run: python tools/ci/restore_generated_sources.py
 
-      - name: Prepare generated sources
-        shell: bash
-        env:
-          PATCHES_C_COMPILER: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang.exe
-          PATCHES_LD: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/ld.lld.exe
-          ZELDA_FILE_TO_C_CXX: ${{ github.workspace }}/portable-llvm/clang+llvm-20.1.8-x86_64-pc-windows-msvc/bin/clang++.exe
-        run: tools/ci/prepare_desktop_generated_sources.sh
+      - name: Download refreshed desktop patches
+        uses: actions/download-artifact@v4
+        with:
+          name: Zelda64Recompiled-DesktopPatches
+          path: .
+
+      - name: Apply refreshed desktop patches
+        shell: pwsh
+        run: tar -xzf Zelda64Recompiled-DesktopPatches.tar.gz
 
       - name: Build
         shell: pwsh
