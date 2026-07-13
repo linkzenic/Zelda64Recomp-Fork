@@ -70,7 +70,6 @@
 #include "../../patches/sound.h"
 #include "../../patches/misc_funcs.h"
 
-#include "mods/mm_recomp_dpad_builtin.h"
 #include "mods/mm_recomp_save_editor.h"
 
 #ifdef _WIN32
@@ -959,11 +958,6 @@ int main(int argc, char** argv) {
     } else
 #endif
     {
-        recomp::mods::register_embedded_mod(
-            "mm_recomp_dpad_builtin",
-            std::span<const uint8_t>(
-                reinterpret_cast<const uint8_t*>(mm_recomp_dpad_builtin),
-                mm_recomp_dpad_builtin_size));
         recomp::mods::register_embedded_mod(
             "mm_recomp_save_editor",
             std::span<const uint8_t>(
